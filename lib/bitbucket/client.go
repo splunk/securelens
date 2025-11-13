@@ -12,6 +12,10 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	serverAPIPath = "/rest/api"
+)
+
 // Client represents a Bitbucket API client
 type Client struct {
 	httpClient  *http.Client
@@ -60,6 +64,45 @@ type Repository struct {
 	} `json:"links"`
 }
 
+// ServerRepository represents a Bitbucket Server repository response
+type ServerRepository struct {
+	Slug    string `json:"slug"`
+	Name    string `json:"name"`
+	Project struct {
+		Key  string `json:"key"`
+		Name string `json:"name"`
+	} `json:"project"`
+	Public bool `json:"public"`
+	Links  struct {
+		Clone []struct {
+			Name string `json:"name"`
+			Href string `json:"href"`
+		} `json:"clone"`
+		Self []struct {
+			Href string `json:"href"`
+		} `json:"self"`
+	} `json:"links"`
+}
+
+// ServerResponse represents a Bitbucket Server paginated response
+type ServerResponse struct {
+	Values        []ServerRepository `json:"values"`
+	Size          int                `json:"size"`
+	Limit         int                `json:"limit"`
+	IsLastPage    bool               `json:"isLastPage"`
+	Start         int                `json:"start"`
+	NextPageStart int                `json:"nextPageStart"`
+}
+
+func (c *Client) isServerAPI() bool {
+	for i := 0; i <= len(c.apiURL)-len(serverAPIPath); i++ {
+		if c.apiURL[i:i+len(serverAPIPath)] == serverAPIPath {
+			return true
+		}
+	}
+	return false
+}
+
 // ListRepositories lists all accessible repositories for a workspace (Bitbucket Cloud)
 // or all repositories the user has access to if workspace is empty
 func (c *Client) ListRepositories(ctx context.Context, workspace string) ([]Repository, error) {
@@ -89,6 +132,12 @@ func (c *Client) ListRepositories(ctx context.Context, workspace string) ([]Repo
 
 // buildRepositoriesURL constructs the API URL based on workspace parameter
 func (c *Client) buildRepositoriesURL(workspace string) string {
+	// Bitbucket Server API
+	if c.isServerAPI() {
+		return fmt.Sprintf("%s/repos", c.apiURL)
+	}
+
+	// Bitbucket Cloud API
 	if workspace != "" {
 		return fmt.Sprintf("%s/repositories/%s", c.apiURL, workspace)
 	}
@@ -97,30 +146,75 @@ func (c *Client) buildRepositoriesURL(workspace string) string {
 
 // fetchRepositoriesPage fetches a single page of repositories
 func (c *Client) fetchRepositoriesPage(ctx context.Context, apiURL string, page int) ([]Repository, bool, error) {
+	// Rate limiting
 	if err := c.limiter.Wait(ctx); err != nil {
 		return []Repository{}, false, err
 	}
 
-	pageURL := fmt.Sprintf("%s?page=%d&pagelen=100", apiURL, page)
+	var pageURL string
+	if c.isServerAPI() {
+		start := (page - 1) * 100
+		pageURL = fmt.Sprintf("%s?start=%d&limit=100", apiURL, start)
+	} else {
+		// Build paginated URL
+		pageURL = fmt.Sprintf("%s?page=%d&pagelen=100", apiURL, page)
+	}
 
+	// Make HTTP request
 	body, err := c.makeAuthenticatedRequest(ctx, pageURL)
 	if err != nil {
 		return []Repository{}, false, err
 	}
 
+	if c.isServerAPI() {
+		return c.parseServerResponse(body, page)
+	}
+	return c.parseCloudResponse(body, page)
+}
+
+// parseCloudResponse parses Bitbucket Cloud API response
+func (c *Client) parseCloudResponse(body []byte, page int) ([]Repository, bool, error) {
 	var response struct {
 		Values []Repository `json:"values"`
 		Next   string       `json:"next"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
-		slog.Error("Failed to parse Bitbucket response", "error", err)
+		slog.Error("Failed to parse Bitbucket Cloud response", "error", err)
 		return []Repository{}, false, err
 	}
 
-	slog.Debug("Fetched Bitbucket repositories page", "page", page, "count", len(response.Values))
-
+	slog.Info("Fetched Bitbucket Cloud repositories page", "page", page, "count", len(response.Values))
 	hasMore := response.Next != ""
 	return response.Values, hasMore, nil
+}
+
+func (c *Client) parseServerResponse(body []byte, page int) ([]Repository, bool, error) {
+	var response ServerResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		slog.Error("Failed to parse Bitbucket Server response", "error", err)
+		return []Repository{}, false, err
+	}
+
+	repos := make([]Repository, len(response.Values))
+	for i, serverRepo := range response.Values {
+		repo := Repository{
+			UUID:      serverRepo.Slug,
+			Name:      serverRepo.Name,
+			FullName:  fmt.Sprintf("%s/%s", serverRepo.Project.Key, serverRepo.Slug),
+			IsPrivate: !serverRepo.Public,
+			Language:  "",
+		}
+		repo.Links.Clone = serverRepo.Links.Clone
+
+		if len(serverRepo.Links.Self) > 0 {
+			repo.Links.HTML.Href = serverRepo.Links.Self[0].Href
+		}
+		repos[i] = repo
+	}
+
+	slog.Debug("Fetched Bitbucket Server repositories page", "page", page, "count", len(repos))
+	hasMore := !response.IsLastPage
+	return repos, hasMore, nil
 }
 
 // makeAuthenticatedRequest makes an authenticated HTTP request to Bitbucket API
