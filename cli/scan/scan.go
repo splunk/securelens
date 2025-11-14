@@ -1,10 +1,179 @@
 package scan
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
+	"os"
 
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+
+	"github.com/splunk/securelens/internal/config"
+	"github.com/splunk/securelens/lib/bitbucket"
+	"github.com/splunk/securelens/lib/github"
+	"github.com/splunk/securelens/lib/gitlab"
 )
+
+type DiscoveredRepository struct {
+	Provider    string `json:"provider"`
+	Name        string `json:"name"`
+	FullName    string `json:"full_name"`
+	URL         string `json:"url"`
+	IsPrivate   bool   `json:"is_private"`
+	Language    string `json:"language"`
+	Description string `json:"description"`
+	Source      string `json:"source"`
+}
+
+func discoverRepositories(ctx context.Context, cfg *config.Config) ([]DiscoveredRepository, error) {
+	slog.Info("Starting repository discovery")
+
+	var allRepos []DiscoveredRepository
+
+	// Gitlab
+	gitlabRepos, err := discoverFromGitLab(ctx, cfg.Git.GitLab)
+	if err != nil {
+		slog.Error("Error discovering GitLab repositories", "error", err)
+	} else {
+		allRepos = append(allRepos, gitlabRepos...)
+		slog.Info("Discovered GitLab repositories", "count", len(gitlabRepos))
+	}
+
+	// Github
+	githubRepos, err := discoverFromGitHub(ctx, cfg.Git.GitHub)
+	if err != nil {
+		slog.Error("Error discovering GitHub repositories", "error", err)
+	} else {
+		allRepos = append(allRepos, githubRepos...)
+		slog.Info("Discovered GitHub repositories", "count", len(githubRepos))
+	}
+
+	// Bitbucket
+	bitbucketRepos, err := discoverFromBitbucket(ctx, cfg.Git.Bitbucket)
+	if err != nil {
+		slog.Error("Error discovering Bitbucket repositories", "error", err)
+	} else {
+		allRepos = append(allRepos, bitbucketRepos...)
+		slog.Info("Discovered Bitbucket repositories", "count", len(bitbucketRepos))
+	}
+
+	slog.Info("Repository discovery completed", "total_count", len(allRepos))
+
+	return allRepos, nil
+}
+
+func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig) ([]DiscoveredRepository, error) {
+	var repos []DiscoveredRepository
+
+	for _, cfg := range configs {
+		slog.Info("Discovering GitLab repositories", "instance", cfg.Name, "url", cfg.APIURL)
+
+		client, err := gitlab.NewClient(cfg.Token, cfg.APIURL)
+		if err != nil {
+			slog.Error("Failed to create GitLab client", "instance", cfg.Name, "error", err)
+			continue
+		}
+
+		projects, err := client.ListProjects(ctx)
+		if err != nil {
+			slog.Error("Failed to list GitLab projects", "instance", cfg.Name, "error", err)
+			continue
+		}
+
+		for _, project := range projects {
+			repos = append(repos, DiscoveredRepository{
+				Provider:    "gitlab",
+				Name:        project.Name,
+				FullName:    project.PathWithNS,
+				URL:         project.HTTPURL,
+				IsPrivate:   project.Visibility != "public",
+				Language:    "",
+				Description: "",
+				Source:      cfg.Name,
+			})
+		}
+		slog.Info("Discovered repositories from GitLab instance", "instance", cfg.Name, "count", len(projects))
+	}
+	return repos, nil
+}
+
+func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig) ([]DiscoveredRepository, error) {
+	var repos []DiscoveredRepository
+
+	for _, cfg := range configs {
+		slog.Info("Discovering GitHub repositories", "instance", cfg.Name, "url", cfg.APIURL)
+
+		client, err := github.NewClient(cfg.Token, cfg.APIURL)
+		if err != nil {
+			slog.Error("Failed to create GitHub client", "instance", cfg.Name, "error", err)
+		}
+
+		var githubRepos []github.Repository
+		if len(cfg.Organizations) > 0 {
+			githubRepos, err = client.ListRepositoriesForOrganizations(ctx, cfg.Organizations)
+		} else {
+			githubRepos, err = client.ListRepositories(ctx, "")
+		}
+
+		if err != nil {
+			slog.Error("Failed to list GitLab projects", "instance", cfg.Name, "error", err)
+			continue
+		}
+
+		for _, repo := range githubRepos {
+			repos = append(repos, DiscoveredRepository{
+				Provider:  "github",
+				Name:      repo.Name,
+				FullName:  repo.FullName,
+				URL:       repo.CloneURL,
+				IsPrivate: repo.Private,
+				Language:  repo.Language,
+				Source:    cfg.Name,
+			})
+		}
+		slog.Info("Discovered repositories from GitHub instance", "instance", cfg.Name, "count", len(githubRepos))
+	}
+	return repos, nil
+}
+
+func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig) ([]DiscoveredRepository, error) {
+	var repos []DiscoveredRepository
+
+	for _, cfg := range configs {
+		slog.Info("Discovering Bitbucket repositories", "instance", cfg.Name, "workspace", cfg.Workspace)
+
+		client, err := bitbucket.NewClient(cfg.Username, cfg.AppPassword, cfg.APIURL)
+		if err != nil {
+			slog.Error("Failed to create Bitbucket client", "instance", cfg.Name, "error", err)
+			continue
+		}
+
+		bitbucketRepos, err := client.ListRepositories(ctx, cfg.Workspace)
+		if err != nil {
+			slog.Error("Failed to list Bitbucket repositories", "instance", cfg.Name, "error", err)
+			continue
+		}
+
+		for _, repo := range bitbucketRepos {
+			repos = append(repos, DiscoveredRepository{
+				Provider:    "bitbucket",
+				Name:        repo.Name,
+				FullName:    repo.FullName,
+				URL:         repo.Links.Clone[0].Href,
+				IsPrivate:   repo.IsPrivate,
+				Language:    repo.Language,
+				Description: "",
+				Source:      cfg.Name,
+			})
+		}
+		slog.Info("Discovered repositories from Bitbucket instance", "instance", cfg.Name, "count", len(bitbucketRepos))
+	}
+	return repos, nil
+}
 
 // NewScanCmd creates the scan command
 func NewScanCmd() *cobra.Command {
@@ -79,25 +248,137 @@ Examples:
 }
 
 func newDiscoverCmd() *cobra.Command {
+	var (
+		configPath string
+		format     string
+		outputFile string
+	)
+
 	cmd := &cobra.Command{
 		Use:   "discover",
 		Short: "Discover and scan repositories",
 		Long:  `Discover repositories based on various criteria and scan them.`,
 	}
 
-	cmd.AddCommand(&cobra.Command{
+	scopeCmd := &cobra.Command{
 		Use:   "scope",
 		Short: "Scan all repositories within API scope",
 		Long: `Scan all repositories accessible with the provided credentials.
 
 Examples:
-  securelens scan discover scope`,
+  securelens scan discover scope
+  securelens scan discover scope --config ~/.securelens/config.yaml
+  securelens scan discover scope --format json --output repos.json`,
 		Run: func(cmd *cobra.Command, args []string) {
+			ctx := context.Background()
+
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				slog.Error("Failed to load configuration", "error", err)
+				return
+			}
+
+			if err := cfg.Validate(); err != nil {
+				slog.Error("Invalid configuration", "error", err)
+				return
+			}
+
 			slog.Info("Discovering repositories within scope")
-			// TODO: Implement scope discovery logic
-			slog.Info("Discovery scan completed successfully")
+			repos, err := discoverRepositories(ctx, cfg)
+			if err != nil {
+				slog.Error("Failed to discover repositories", "error", err)
+				return
+			}
+
+			slog.Info("Discovery scan completed successfully", "count", len(repos))
+
+			err = outputResults(repos, format, outputFile)
+			if err != nil {
+				slog.Error("Failed to output results", "error", err)
+			}
 		},
-	})
+	}
+
+	scopeCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to configuration file "+
+		"(searches: ~/.securelens/config.yaml, ./config.yaml, /etc/securelens/config.yaml)")
+	scopeCmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
+	scopeCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file (default: stdout)")
+
+	cmd.AddCommand(scopeCmd)
 
 	return cmd
+}
+
+func outputResults(repos []DiscoveredRepository, format, outputFile string) error {
+	var output []byte
+	var err error
+
+	switch format {
+	case "json":
+		output, err = formatJSON(repos)
+	case "yaml":
+		output, err = formatYAML(repos)
+	case "table":
+		return formatTable(repos, outputFile)
+	default:
+		return fmt.Errorf("Unsupported output format: %s", format)
+	}
+
+	if err != nil {
+		return fmt.Errorf("Failed to format output: %w", err)
+	}
+
+	if outputFile != "" {
+		return os.WriteFile(outputFile, output, 0644)
+	}
+
+	fmt.Println(string(output))
+	return nil
+}
+
+func formatJSON(repos []DiscoveredRepository) ([]byte, error) {
+	return json.MarshalIndent(repos, "", "  ")
+}
+
+func formatYAML(repos []DiscoveredRepository) ([]byte, error) {
+	return yaml.Marshal(repos)
+}
+
+func formatTable(repos []DiscoveredRepository, outputFile string) error {
+	var writer io.Writer = os.Stdout
+
+	if outputFile != "" {
+		file, err := os.Create(outputFile)
+		if err != nil {
+			return fmt.Errorf("Failed to create output file: %w", err)
+		}
+		defer file.Close()
+		writer = file
+	}
+
+	table := tablewriter.NewWriter(writer)
+
+	table.Header("Provider", "Name", "Full Name", "URL", "Private", "Language", "Source")
+
+	for _, repo := range repos {
+		private := "No"
+		if repo.IsPrivate {
+			private = "Yes"
+		}
+
+		err := table.Append(
+			repo.Provider,
+			repo.Name,
+			repo.FullName,
+			repo.URL,
+			private,
+			repo.Language,
+			repo.Source,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to append row: %w", err)
+		}
+	}
+
+	return table.Render()
 }
