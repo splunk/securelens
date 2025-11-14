@@ -1,0 +1,38 @@
+# Example SecureLens Configuration
+# This file won't be necessary after newInitCmd() is implemented 
+# in cli/config/config.go.
+
+# Git provider credentials - supports multiple instances of each provider
+git:
+  # GitLab instances
+  gitlab:
+    - name: gitlab-com
+      token: ${GITLAB_TOKEN}
+      api_url: https://gitlab.com/api/v4
+  
+  # GitHub instances
+  github:
+    - name: github-com
+      token: ${GITHUB_TOKEN}
+      api_url: https://api.github.com
+      organizations: []  # empty = all accessible repos
+    
+    # Uncomment for GitHub Enterprise
+    # - name: github-enterprise
+    #   token: ${GITHUB_ENTERPRISE_TOKEN}
+    #   api_url: https://github.company.com/api/v3
+    #   organizations: ["engineering", "security"]
+
+  # Bitbucket instances
+  bitbucket:
+    - name: bitbucket-cloud
+      username: ${BITBUCKET_USERNAME}
+      app_password: ${BITBUCKET_APP_PASSWORD}
+      api_url: https://api.bitbucket.org/2.0
+      workspace: myworkspace
+    
+    # Bitbucket server
+    # - name: bitbucket-server
+    #   username: ${BITBUCKET_SERVER_USERNAME}
+    #   app_password: ${BITBUCKET_SERVER_PASSWORD}
+    #   api_url: https://bitbucket.company.com

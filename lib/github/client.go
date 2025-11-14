@@ -3,53 +3,146 @@ package github
 import (
 	"context"
 	"log/slog"
+	"time"
+
+	"github.com/google/go-github/v66/github"
+	"golang.org/x/time/rate"
 )
 
 // Client represents a GitHub API client
 type Client struct {
-	token  string
-	apiURL string
+	client  *github.Client
+	limiter *rate.Limiter
+	apiURL  string
 }
 
 // NewClient creates a new GitHub API client
-func NewClient(token, apiURL string) *Client {
+func NewClient(token, apiURL string) (*Client, error) {
 	if apiURL == "" {
 		apiURL = "https://api.github.com"
 	}
 
-	return &Client{
-		token:  token,
-		apiURL: apiURL,
+	githubClient := github.NewClient(nil).WithAuthToken(token)
+
+	if apiURL != "https://api.github.com" {
+		var err error
+		githubClient, err = githubClient.WithEnterpriseURLs(apiURL, apiURL)
+		if err != nil {
+			return nil, err
+		}
 	}
+
+	limiter := rate.NewLimiter(rate.Every(60*time.Millisecond), 1)
+
+	return &Client{
+		client:  githubClient,
+		limiter: limiter,
+		apiURL:  apiURL,
+	}, nil
 }
 
 // Repository represents a GitHub repository
 type Repository struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	FullName    string `json:"full_name"`
-	CloneURL    string `json:"clone_url"`
-	SSHURL      string `json:"ssh_url"`
-	HTMLURL     string `json:"html_url"`
-	Private     bool   `json:"private"`
-	Archived    bool   `json:"archived"`
-	Language    string `json:"language"`
-	Stars       int    `json:"stargazers_count"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	FullName string `json:"full_name"`
+	CloneURL string `json:"clone_url"`
+	SSHURL   string `json:"ssh_url"`
+	HTMLURL  string `json:"html_url"`
+	Private  bool   `json:"private"`
+	Archived bool   `json:"archived"`
+	Language string `json:"language"`
+	Stars    int    `json:"stargazers_count"`
 }
 
-// ListRepositories lists all accessible repositories
-func (c *Client) ListRepositories(ctx context.Context) ([]Repository, error) {
-	slog.Info("Listing GitHub repositories")
+// ListRepositories lists all accessible repositories for a given owner (user or organization)
+// If owner is empty string, lists repositories for the authenticated user
+func (c *Client) ListRepositories(ctx context.Context, owner string) ([]Repository, error) {
+	slog.Info("Listing GitHub repositories", "apiURL", c.apiURL, "owner", owner)
 
-	// TODO: Implement GitHub API integration
-	// 1. Make GET request to /user/repos
-	// 2. Handle pagination
-	// 3. Parse response into Repository structs
-	// 4. Return repositories
+	var allRepos []Repository
+	options := &github.RepositoryListOptions{
+		ListOptions: github.ListOptions{
+			Page:    1,
+			PerPage: 100,
+		},
+	}
 
-	slog.Info("Repositories listed successfully")
+	for {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return []Repository{}, err
+		}
 
-	return []Repository{}, nil
+		var repos []*github.Repository
+		var resp *github.Response
+		var err error
+
+		if owner == "" {
+			repos, resp, err = c.client.Repositories.List(ctx, "", options)
+		} else {
+			repos, resp, err = c.client.Repositories.List(ctx, owner, options)
+		}
+
+		if err != nil {
+			slog.Error("Failed to fetch GitHub repositories", "error", err, "owner", owner, "page", options.Page)
+			return []Repository{}, err
+		}
+
+		for _, r := range repos {
+			allRepos = append(allRepos, Repository{
+				ID:       r.GetID(),
+				Name:     r.GetName(),
+				FullName: r.GetFullName(),
+				CloneURL: r.GetCloneURL(),
+				SSHURL:   r.GetSSHURL(),
+				HTMLURL:  r.GetHTMLURL(),
+				Private:  r.GetPrivate(),
+				Archived: r.GetArchived(),
+				Language: r.GetLanguage(),
+				Stars:    r.GetStargazersCount(),
+			})
+		}
+
+		slog.Debug("Fetched GitHub repositories page", "page", options.Page, "count", len(repos), "total", len(allRepos))
+
+		if resp.NextPage == 0 {
+			break
+		}
+
+		options.Page = resp.NextPage
+	}
+
+	slog.Info("Repositories listed successfully", "total", len(allRepos))
+	return allRepos, nil
+}
+
+// ListRepositoriesForOrganizations lists all repositories for multiple organizations
+// This is useful when the config specifies multiple organizations to scan
+func (c *Client) ListRepositoriesForOrganizations(ctx context.Context, organizations []string) ([]Repository, error) {
+	slog.Info("Listing GitHub repositories for multiple organizations", "orgCount", len(organizations))
+
+	allRepos := []Repository{}
+
+	if len(organizations) == 0 {
+		slog.Info("No organizations specified, listing repositories for authenticated user")
+		return c.ListRepositories(ctx, "")
+	}
+
+	for _, org := range organizations {
+		slog.Debug("Fetching repositories for organization", "org", org)
+
+		repos, err := c.ListRepositories(ctx, org)
+		if err != nil {
+			slog.Error("Failed to list repositories for organization", "org", org, "error", err)
+			continue
+		}
+
+		slog.Debug("Fetched repositories for organization", "org", org, "count", len(repos))
+		allRepos = append(allRepos, repos...)
+	}
+
+	slog.Info("All repositories listed successfully", "total", len(allRepos), "organizations", len(organizations))
+	return allRepos, nil
 }
 
 // GetRepository retrieves a specific repository
