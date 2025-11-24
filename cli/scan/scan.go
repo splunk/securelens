@@ -252,6 +252,7 @@ func newDiscoverCmd() *cobra.Command {
 		configPath string
 		format     string
 		outputFile string
+		countOnly  bool
 	)
 
 	cmd := &cobra.Command{
@@ -292,6 +293,11 @@ Examples:
 
 			slog.Info("Discovery scan completed successfully", "count", len(repos))
 
+			if countOnly {
+				fmt.Printf("Total repositories discovered: %d\n", len(repos))
+				return
+			}
+
 			err = outputResults(repos, format, outputFile)
 			if err != nil {
 				slog.Error("Failed to output results", "error", err)
@@ -303,6 +309,7 @@ Examples:
 		"(searches: ~/.securelens/config.yaml, ./config.yaml, /etc/securelens/config.yaml)")
 	scopeCmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
 	scopeCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file (default: stdout)")
+	scopeCmd.Flags().BoolVar(&countOnly, "count-only", false, "only display the count of discovered repositories")
 
 	cmd.AddCommand(scopeCmd)
 
