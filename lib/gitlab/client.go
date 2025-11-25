@@ -100,3 +100,34 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 	slog.Info("Projects listed successfully", "total", len(allProjects))
 	return allProjects, nil
 }
+
+// GetProject retrieves a specific project by its path (e.g., "group/project" or "group/subgroup/project")
+func (c *Client) GetProject(ctx context.Context, projectPath string) (*Project, error) {
+	slog.Info("Getting Gitlab project", "path", projectPath)
+
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+
+	gitlabProject, _, err := c.client.Projects.GetProject(projectPath, nil)
+	if err != nil {
+		slog.Error("Failed to get GitLab project", "error", err, "path", projectPath)
+		return nil, err
+	}
+
+	project := &Project{
+		ID:         gitlabProject.ID,
+		Name:       gitlabProject.Name,
+		Path:       gitlabProject.Path,
+		PathWithNS: gitlabProject.PathWithNamespace,
+		HTTPURL:    gitlabProject.HTTPURLToRepo,
+		SSHURL:     gitlabProject.SSHURLToRepo,
+		WebURL:     gitlabProject.WebURL,
+		Visibility: string(gitlabProject.Visibility),
+		Archived:   gitlabProject.Archived,
+	}
+
+	slog.Info("Project retrieved successfully", "path", project.PathWithNS)
+
+	return project, nil
+}

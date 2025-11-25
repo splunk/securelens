@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -253,6 +254,8 @@ func newDiscoverCmd() *cobra.Command {
 		format     string
 		outputFile string
 		countOnly  bool
+		repoName   string
+		provider   string
 	)
 
 	cmd := &cobra.Command{
@@ -276,6 +279,15 @@ Examples:
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				slog.Error("Failed to load configuration", "error", err)
+				return
+			}
+
+			if repoName != "" {
+				if provider == "" {
+					slog.Error("--provider must be specified when using --repo")
+					return
+				}
+				checkRepositoryAccess(ctx, cfg, repoName, provider)
 				return
 			}
 
@@ -310,6 +322,8 @@ Examples:
 	scopeCmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
 	scopeCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file (default: stdout)")
 	scopeCmd.Flags().BoolVar(&countOnly, "count-only", false, "only display the count of discovered repositories")
+	scopeCmd.Flags().StringVar(&repoName, "repo", "", "check if a specific repository is accessible (format: owner/repo)")
+	scopeCmd.Flags().StringVar(&provider, "provider", "", "provider for the repo (github, gitlab, bitbucket) when using --repo")
 
 	cmd.AddCommand(scopeCmd)
 
@@ -388,4 +402,104 @@ func formatTable(repos []DiscoveredRepository, outputFile string) error {
 	}
 
 	return table.Render()
+}
+
+func checkRepositoryAccess(ctx context.Context, cfg *config.Config, repoURL string, provider string) {
+	slog.Info("Checking repository access", "url", repoURL)
+
+	switch provider {
+	case "gitlab":
+		checkGitlabRepoAccess(ctx, cfg.Git.GitLab, repoURL)
+	case "github":
+		checkGitHubRepoAccess(ctx, cfg.Git.GitHub, repoURL)
+	case "bitbucket":
+		checkBitbucketRepoAccess(ctx, cfg.Git.Bitbucket, repoURL)
+	default:
+		slog.Error("Unsupported provider", "provider", provider)
+	}
+}
+
+func checkGitlabRepoAccess(ctx context.Context, configs []config.GitLabConfig, repoName string) {
+	for _, cfg := range configs {
+		client, err := gitlab.NewClient(cfg.Token, cfg.APIURL)
+		if err != nil {
+			slog.Error("Failed to create Gitlab client", "intance", cfg.Name, "error", err)
+		}
+
+		project, err := client.GetProject(ctx, repoName)
+		if err != nil {
+			slog.Error("Failed to get project", "instance", cfg.Name, "repo", repoName, "error", err)
+			continue
+		}
+
+		if project != nil {
+			slog.Info("Repository is accessible via Gitlab instance", "instance", cfg.Name, "repo", repoName)
+			return
+		}
+	}
+
+	slog.Info("Repository not found or not accessible with current Gitlab credentials.\n")
+}
+
+func checkGitHubRepoAccess(ctx context.Context, configs []config.GitHubConfig, repoName string) {
+	parts := strings.Split(repoName, "/")
+	if len(parts) != 2 {
+		slog.Error("Invalid repository format. Use owner/repo format.", "repo", repoName)
+		return
+	}
+
+	owner := parts[0]
+	repo := parts[1]
+
+	for _, cfg := range configs {
+		client, err := github.NewClient(cfg.Token, cfg.APIURL)
+		if err != nil {
+			slog.Error("Failed to create Github client", "instance", cfg.Name, "error", err)
+			continue
+		}
+
+		repository, err := client.GetRepository(ctx, owner, repo)
+		if err != nil {
+			slog.Error("Failed to get repository", "instance", cfg.Name, "owner", owner, "repo", repo, "error", err)
+			continue
+		}
+
+		if repository != nil {
+			slog.Info("Repository is accessible via Github instance", "instance", cfg.Name, "owner", owner, "repo", repo)
+			return
+		}
+	}
+	slog.Info("Repository not found or not accessible with current Github credentials.\n")
+}
+
+func checkBitbucketRepoAccess(ctx context.Context, configs []config.BitbucketConfig, repoName string) {
+	parts := strings.Split(repoName, "/")
+	if len(parts) != 2 {
+		slog.Error("Invalid repository format. Use workspace/repo format.", "repo", repoName)
+		return
+	}
+
+	workspace := parts[0]
+	repoSlug := parts[1]
+
+	for _, cfg := range configs {
+		client, err := bitbucket.NewClient(cfg.Username, cfg.AppPassword, cfg.APIURL)
+		if err != nil {
+			slog.Error("Failed to create Bitbucket client", "instance", cfg.Name, "error", err)
+			continue
+		}
+
+		repository, err := client.GetRepository(ctx, workspace, repoSlug)
+		if err != nil {
+			slog.Error("Failed to get repository", "instance", cfg.Name, "workspace", workspace, "repo", repoSlug, "error", err)
+			continue
+		}
+
+		if repository != nil {
+			slog.Info("Repository is accessible via Bitbucket instance", "instance", cfg.Name, "workspace", workspace, "repo", repoSlug)
+			return
+		}
+	}
+
+	slog.Info("Repository not found or not accessible with current Bitbucket credentials\n.")
 }

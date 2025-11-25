@@ -150,7 +150,28 @@ func (c *Client) GetRepository(ctx context.Context, owner, repo string) (*Reposi
 	slog.Info("Getting GitHub repository", "owner", owner, "repo", repo)
 
 	// TODO: Implement repository retrieval
-	// GET /repos/:owner/:repo
+	// GET /repos/:owner/:repo]
 
-	return nil, nil
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+
+	retrievedRepo, _, err := c.client.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	repository := &Repository{
+		ID:       retrievedRepo.GetID(),
+		Name:     retrievedRepo.GetName(),
+		FullName: retrievedRepo.GetFullName(),
+		CloneURL: retrievedRepo.GetCloneURL(),
+		SSHURL:   retrievedRepo.GetSSHURL(),
+		HTMLURL:  retrievedRepo.GetHTMLURL(),
+		Private:  retrievedRepo.GetPrivate(),
+	}
+
+	slog.Info("Repository retrieved successfully", "fullName", repository.FullName)
+
+	return repository, nil
 }
