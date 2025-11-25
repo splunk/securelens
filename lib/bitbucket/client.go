@@ -105,21 +105,29 @@ func (c *Client) isServerAPI() bool {
 
 // ListRepositories lists all accessible repositories for a workspace (Bitbucket Cloud)
 // or all repositories the user has access to if workspace is empty
-func (c *Client) ListRepositories(ctx context.Context, workspace string) ([]Repository, error) {
-	slog.Info("Listing Bitbucket repositories", "apiURL", c.apiURL, "workspace", workspace)
+func (c *Client) ListRepositories(ctx context.Context, workspace string, limit int) ([]Repository, error) {
+	slog.Info("Listing Bitbucket repositories", "apiURL", c.apiURL, "workspace", workspace, "limit", limit)
 
 	allRepos := []Repository{}
 	apiURL := c.buildRepositoriesURL(workspace)
 	page := 1
 
 	for {
-		repos, hasMore, err := c.fetchRepositoriesPage(ctx, apiURL, page)
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
+
+		remaining := limit - len(allRepos)
+		repos, hasMore, err := c.fetchRepositoriesPage(ctx, apiURL, page, remaining)
 		if err != nil {
 			return []Repository{}, err
 		}
 
 		allRepos = append(allRepos, repos...)
 
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
 		if !hasMore {
 			break
 		}
@@ -145,7 +153,7 @@ func (c *Client) buildRepositoriesURL(workspace string) string {
 }
 
 // fetchRepositoriesPage fetches a single page of repositories
-func (c *Client) fetchRepositoriesPage(ctx context.Context, apiURL string, page int) ([]Repository, bool, error) {
+func (c *Client) fetchRepositoriesPage(ctx context.Context, apiURL string, page int, remaining int) ([]Repository, bool, error) {
 	// Rate limiting
 	if err := c.limiter.Wait(ctx); err != nil {
 		return []Repository{}, false, err
@@ -167,13 +175,13 @@ func (c *Client) fetchRepositoriesPage(ctx context.Context, apiURL string, page 
 	}
 
 	if c.isServerAPI() {
-		return c.parseServerResponse(body, page)
+		return c.parseServerResponse(body, page, remaining)
 	}
-	return c.parseCloudResponse(body, page)
+	return c.parseCloudResponse(body, page, remaining)
 }
 
 // parseCloudResponse parses Bitbucket Cloud API response
-func (c *Client) parseCloudResponse(body []byte, page int) ([]Repository, bool, error) {
+func (c *Client) parseCloudResponse(body []byte, page int, remaining int) ([]Repository, bool, error) {
 	var response struct {
 		Values []Repository `json:"values"`
 		Next   string       `json:"next"`
@@ -183,12 +191,17 @@ func (c *Client) parseCloudResponse(body []byte, page int) ([]Repository, bool, 
 		return []Repository{}, false, err
 	}
 
+	repos := response.Values
+	if remaining > 0 && len(repos) > remaining {
+		repos = repos[:remaining]
+	}
+
 	slog.Info("Fetched Bitbucket Cloud repositories page", "page", page, "count", len(response.Values))
 	hasMore := response.Next != ""
 	return response.Values, hasMore, nil
 }
 
-func (c *Client) parseServerResponse(body []byte, page int) ([]Repository, bool, error) {
+func (c *Client) parseServerResponse(body []byte, page int, remaining int) ([]Repository, bool, error) {
 	var response ServerResponse
 	if err := json.Unmarshal(body, &response); err != nil {
 		slog.Error("Failed to parse Bitbucket Server response", "error", err)
@@ -197,6 +210,10 @@ func (c *Client) parseServerResponse(body []byte, page int) ([]Repository, bool,
 
 	repos := make([]Repository, len(response.Values))
 	for i, serverRepo := range response.Values {
+		if remaining > 0 && i >= remaining {
+			break
+		}
+
 		repo := Repository{
 			UUID:      serverRepo.Slug,
 			Name:      serverRepo.Name,
@@ -247,33 +264,6 @@ func (c *Client) makeAuthenticatedRequest(ctx context.Context, url string) ([]by
 	}
 
 	return body, nil
-}
-
-func (c *Client) ListRepositoriesForWorkspaces(ctx context.Context, workspaces []string) ([]Repository, error) {
-	slog.Info("Listing Bitbucket repositories for multiple workspaces", "workspaceCount", len(workspaces))
-
-	allRepos := []Repository{}
-
-	if len(workspaces) == 0 {
-		slog.Info("No workspaces specified, listing repositories for authenticated user")
-		return c.ListRepositories(ctx, "")
-	}
-
-	for _, workspace := range workspaces {
-		slog.Info("Fetching repositories for workspace", "workspace", workspace)
-
-		repos, err := c.ListRepositories(ctx, workspace)
-		if err != nil {
-			slog.Error("Failed to list repositories for workspace", "workspace", workspace, "error", err)
-			continue
-		}
-
-		slog.Info("Fetched repositories for workspace", "workspace", workspace, "count", len(repos))
-		allRepos = append(allRepos, repos...)
-	}
-
-	slog.Info("Sucessfully listed repositories", "total", len(allRepos))
-	return allRepos, nil
 }
 
 // GetRepository retrieves a specific repository

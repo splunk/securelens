@@ -30,47 +30,72 @@ type DiscoveredRepository struct {
 	Source      string `json:"source"`
 }
 
-func discoverRepositories(ctx context.Context, cfg *config.Config) ([]DiscoveredRepository, error) {
-	slog.Info("Starting repository discovery")
+func discoverRepositories(ctx context.Context, cfg *config.Config, limit int) ([]DiscoveredRepository, error) {
+	slog.Info("Starting repository discovery", "limit", limit)
 
 	var allRepos []DiscoveredRepository
+	remaining := limit
+
+	limitReached := func() bool {
+		return limit > 0 && len(allRepos) >= limit
+	}
 
 	// Gitlab
-	gitlabRepos, err := discoverFromGitLab(ctx, cfg.Git.GitLab)
-	if err != nil {
-		slog.Error("Error discovering GitLab repositories", "error", err)
-	} else {
-		allRepos = append(allRepos, gitlabRepos...)
-		slog.Info("Discovered GitLab repositories", "count", len(gitlabRepos))
+	if !limitReached() {
+		gitlabRepos, err := discoverFromGitLab(ctx, cfg.Git.GitLab, remaining)
+		if err != nil {
+			slog.Error("Error discovering GitLab repositories", "error", err)
+		} else {
+			allRepos = append(allRepos, gitlabRepos...)
+			if limit > 0 {
+				remaining = limit - len(allRepos)
+			}
+			slog.Info("Discovered GitLab repositories", "count", len(gitlabRepos))
+		}
 	}
 
 	// Github
-	githubRepos, err := discoverFromGitHub(ctx, cfg.Git.GitHub)
-	if err != nil {
-		slog.Error("Error discovering GitHub repositories", "error", err)
-	} else {
-		allRepos = append(allRepos, githubRepos...)
-		slog.Info("Discovered GitHub repositories", "count", len(githubRepos))
+	if !limitReached() {
+		githubRepos, err := discoverFromGitHub(ctx, cfg.Git.GitHub, remaining)
+		if err != nil {
+			slog.Error("Error discovering GitHub repositories", "error", err)
+		} else {
+			allRepos = append(allRepos, githubRepos...)
+			if limit > 0 {
+				remaining = limit - len(allRepos)
+			}
+			slog.Info("Discovered GitHub repositories", "count", len(githubRepos))
+		}
 	}
 
 	// Bitbucket
-	bitbucketRepos, err := discoverFromBitbucket(ctx, cfg.Git.Bitbucket)
-	if err != nil {
-		slog.Error("Error discovering Bitbucket repositories", "error", err)
-	} else {
-		allRepos = append(allRepos, bitbucketRepos...)
-		slog.Info("Discovered Bitbucket repositories", "count", len(bitbucketRepos))
+	if !limitReached() {
+		bitbucketRepos, err := discoverFromBitbucket(ctx, cfg.Git.Bitbucket, remaining)
+		if err != nil {
+			slog.Error("Error discovering Bitbucket repositories", "error", err)
+		} else {
+			allRepos = append(allRepos, bitbucketRepos...)
+			slog.Info("Discovered Bitbucket repositories", "count", len(bitbucketRepos))
+		}
 	}
 
-	slog.Info("Repository discovery completed", "total_count", len(allRepos))
+	if limit > 0 && len(allRepos) > limit {
+		allRepos = allRepos[:limit]
+	}
+
+	slog.Info("Repository discovery completed", "total_count", len(allRepos), "limit", limit)
 
 	return allRepos, nil
 }
 
-func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig) ([]DiscoveredRepository, error) {
+func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig, limit int) ([]DiscoveredRepository, error) {
 	var repos []DiscoveredRepository
 
 	for _, cfg := range configs {
+		if limit > 0 && len(repos) >= limit {
+			break
+		}
+
 		slog.Info("Discovering GitLab repositories", "instance", cfg.Name, "url", cfg.APIURL)
 
 		client, err := gitlab.NewClient(cfg.Token, cfg.APIURL)
@@ -79,7 +104,7 @@ func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig) ([]D
 			continue
 		}
 
-		projects, err := client.ListProjects(ctx)
+		projects, err := client.ListProjects(ctx, limit)
 		if err != nil {
 			slog.Error("Failed to list GitLab projects", "instance", cfg.Name, "error", err)
 			continue
@@ -102,10 +127,14 @@ func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig) ([]D
 	return repos, nil
 }
 
-func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig) ([]DiscoveredRepository, error) {
+func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig, limit int) ([]DiscoveredRepository, error) {
 	var repos []DiscoveredRepository
 
 	for _, cfg := range configs {
+		if limit > 0 && len(repos) >= limit {
+			break
+		}
+
 		slog.Info("Discovering GitHub repositories", "instance", cfg.Name, "url", cfg.APIURL)
 
 		client, err := github.NewClient(cfg.Token, cfg.APIURL)
@@ -115,9 +144,9 @@ func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig) ([]D
 
 		var githubRepos []github.Repository
 		if len(cfg.Organizations) > 0 {
-			githubRepos, err = client.ListRepositoriesForOrganizations(ctx, cfg.Organizations)
+			githubRepos, err = client.ListRepositoriesForOrganizations(ctx, cfg.Organizations, limit)
 		} else {
-			githubRepos, err = client.ListRepositories(ctx, "")
+			githubRepos, err = client.ListRepositories(ctx, "", limit)
 		}
 
 		if err != nil {
@@ -141,10 +170,14 @@ func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig) ([]D
 	return repos, nil
 }
 
-func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig) ([]DiscoveredRepository, error) {
+func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig, limit int) ([]DiscoveredRepository, error) {
 	var repos []DiscoveredRepository
 
 	for _, cfg := range configs {
+		if limit > 0 && len(repos) >= limit {
+			break
+		}
+
 		slog.Info("Discovering Bitbucket repositories", "instance", cfg.Name, "workspace", cfg.Workspace)
 
 		client, err := bitbucket.NewClient(cfg.Username, cfg.AppPassword, cfg.APIURL)
@@ -153,18 +186,27 @@ func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig
 			continue
 		}
 
-		bitbucketRepos, err := client.ListRepositories(ctx, cfg.Workspace)
+		bitbucketRepos, err := client.ListRepositories(ctx, cfg.Workspace, limit)
 		if err != nil {
 			slog.Error("Failed to list Bitbucket repositories", "instance", cfg.Name, "error", err)
 			continue
 		}
 
 		for _, repo := range bitbucketRepos {
+			if limit > 0 && len(repos) >= limit {
+				break
+			}
+
+			cloneURL := ""
+			if len(repo.Links.Clone) > 0 {
+				cloneURL = repo.Links.Clone[0].Href
+			}
+
 			repos = append(repos, DiscoveredRepository{
 				Provider:    "bitbucket",
 				Name:        repo.Name,
 				FullName:    repo.FullName,
-				URL:         repo.Links.Clone[0].Href,
+				URL:         cloneURL,
 				IsPrivate:   repo.IsPrivate,
 				Language:    repo.Language,
 				Description: "",
@@ -256,6 +298,7 @@ func newDiscoverCmd() *cobra.Command {
 		countOnly  bool
 		repoName   string
 		provider   string
+		limit      int
 	)
 
 	cmd := &cobra.Command{
@@ -297,7 +340,7 @@ Examples:
 			}
 
 			slog.Info("Discovering repositories within scope")
-			repos, err := discoverRepositories(ctx, cfg)
+			repos, err := discoverRepositories(ctx, cfg, limit)
 			if err != nil {
 				slog.Error("Failed to discover repositories", "error", err)
 				return
@@ -324,6 +367,7 @@ Examples:
 	scopeCmd.Flags().BoolVar(&countOnly, "count-only", false, "only display the count of discovered repositories")
 	scopeCmd.Flags().StringVar(&repoName, "repo", "", "check if a specific repository is accessible (format: owner/repo)")
 	scopeCmd.Flags().StringVar(&provider, "provider", "", "provider for the repo (github, gitlab, bitbucket) when using --repo")
+	scopeCmd.Flags().IntVar(&limit, "limit", 0, "limit the number of repositories to scan (0 for no limit)")
 
 	cmd.AddCommand(scopeCmd)
 
