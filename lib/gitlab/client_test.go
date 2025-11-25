@@ -62,7 +62,7 @@ func TestListProjects(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := context.Background()
-		projects, err := client.ListProjects(ctx)
+		projects, err := client.ListProjects(ctx, 0)
 
 		// We expect an error since we don't have a valid token
 		// But projects should be non-nil (empty slice)
@@ -82,6 +82,6 @@ func TestListProjectsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err = client.ListProjects(ctx)
+	_, err = client.ListProjects(ctx, 0)
 	assert.Error(t, err, "Should return error when context is cancelled")
 }
