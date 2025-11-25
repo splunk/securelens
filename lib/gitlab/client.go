@@ -52,8 +52,8 @@ type Project struct {
 }
 
 // ListProjects lists all accessible projects
-func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
-	slog.Info("Listing GitLab projects", "apiURL", c.apiURL)
+func (c *Client) ListProjects(ctx context.Context, limit int) ([]Project, error) {
+	slog.Info("Listing GitLab projects", "apiURL", c.apiURL, "limit", limit)
 
 	var allProjects []Project
 	options := &gitlab.ListProjectsOptions{
@@ -64,6 +64,10 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 	}
 
 	for {
+		if limit > 0 && len(allProjects) >= limit {
+			break
+		}
+
 		if err := c.limiter.Wait(ctx); err != nil {
 			return []Project{}, err
 		}
@@ -75,6 +79,10 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 		}
 
 		for _, p := range projects {
+			if limit > 0 && len(allProjects) >= limit {
+				break
+			}
+
 			allProjects = append(allProjects, Project{
 				ID:         p.ID,
 				Name:       p.Name,
@@ -90,6 +98,9 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 
 		slog.Debug("Fetched GitLab projects page", "page", options.Page, "count", len(projects), "total", len(allProjects))
 
+		if limit > 0 && len(allProjects) >= limit {
+			break
+		}
 		if resp.NextPage == 0 {
 			break
 		}

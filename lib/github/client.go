@@ -57,8 +57,8 @@ type Repository struct {
 
 // ListRepositories lists all accessible repositories for a given owner (user or organization)
 // If owner is empty string, lists repositories for the authenticated user
-func (c *Client) ListRepositories(ctx context.Context, owner string) ([]Repository, error) {
-	slog.Info("Listing GitHub repositories", "apiURL", c.apiURL, "owner", owner)
+func (c *Client) ListRepositories(ctx context.Context, owner string, limit int) ([]Repository, error) {
+	slog.Info("Listing GitHub repositories", "apiURL", c.apiURL, "owner", owner, "limit", limit)
 
 	var allRepos []Repository
 	options := &github.RepositoryListOptions{
@@ -69,6 +69,10 @@ func (c *Client) ListRepositories(ctx context.Context, owner string) ([]Reposito
 	}
 
 	for {
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
+
 		if err := c.limiter.Wait(ctx); err != nil {
 			return []Repository{}, err
 		}
@@ -105,6 +109,9 @@ func (c *Client) ListRepositories(ctx context.Context, owner string) ([]Reposito
 
 		slog.Debug("Fetched GitHub repositories page", "page", options.Page, "count", len(repos), "total", len(allRepos))
 
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
 		if resp.NextPage == 0 {
 			break
 		}
@@ -118,20 +125,29 @@ func (c *Client) ListRepositories(ctx context.Context, owner string) ([]Reposito
 
 // ListRepositoriesForOrganizations lists all repositories for multiple organizations
 // This is useful when the config specifies multiple organizations to scan
-func (c *Client) ListRepositoriesForOrganizations(ctx context.Context, organizations []string) ([]Repository, error) {
-	slog.Info("Listing GitHub repositories for multiple organizations", "orgCount", len(organizations))
+func (c *Client) ListRepositoriesForOrganizations(ctx context.Context, organizations []string, limit int) ([]Repository, error) {
+	slog.Info("Listing GitHub repositories for multiple organizations", "orgCount", len(organizations), "limit", limit)
 
 	allRepos := []Repository{}
 
 	if len(organizations) == 0 {
 		slog.Info("No organizations specified, listing repositories for authenticated user")
-		return c.ListRepositories(ctx, "")
+		return c.ListRepositories(ctx, "", limit)
 	}
 
 	for _, org := range organizations {
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
+
 		slog.Debug("Fetching repositories for organization", "org", org)
 
-		repos, err := c.ListRepositories(ctx, org)
+		remaining := limit
+		if limit > 0 {
+			remaining = limit - len(allRepos)
+		}
+
+		repos, err := c.ListRepositories(ctx, org, remaining)
 		if err != nil {
 			slog.Error("Failed to list repositories for organization", "org", org, "error", err)
 			continue
@@ -148,9 +164,6 @@ func (c *Client) ListRepositoriesForOrganizations(ctx context.Context, organizat
 // GetRepository retrieves a specific repository
 func (c *Client) GetRepository(ctx context.Context, owner, repo string) (*Repository, error) {
 	slog.Info("Getting GitHub repository", "owner", owner, "repo", repo)
-
-	// TODO: Implement repository retrieval
-	// GET /repos/:owner/:repo]
 
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, err
