@@ -280,8 +280,53 @@ func (c *Client) ListRepositoriesForWorkspaces(ctx context.Context, workspaces [
 func (c *Client) GetRepository(ctx context.Context, workspace, repoSlug string) (*Repository, error) {
 	slog.Info("Getting Bitbucket repository", "workspace", workspace, "repo", repoSlug)
 
-	// TODO: Implement repository retrieval
-	// GET /repositories/:workspace/:repo_slug
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	var url string
+	if c.isServerAPI() {
+		url = fmt.Sprintf("%s/projects/%s/repos/%s", c.apiURL, workspace, repoSlug)
+	} else {
+		url = fmt.Sprintf("%s/repositories/%s/%s", c.apiURL, workspace, repoSlug)
+	}
+
+	body, err := c.makeAuthenticatedRequest(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+
+	if c.isServerAPI() {
+		var serverRepo ServerRepository
+		if err := json.Unmarshal(body, &serverRepo); err != nil {
+			slog.Error("Failed to parse Bitbucket Server repository response", "error", err)
+			return nil, err
+		}
+
+		repo := &Repository{
+			UUID:      serverRepo.Slug,
+			Name:      serverRepo.Name,
+			FullName:  fmt.Sprintf("%s/%s", serverRepo.Project.Key, serverRepo.Slug),
+			IsPrivate: !serverRepo.Public,
+			Language:  "",
+		}
+		repo.Links.Clone = serverRepo.Links.Clone
+
+		if len(serverRepo.Links.Self) > 0 {
+			repo.Links.HTML.Href = serverRepo.Links.Self[0].Href
+		}
+
+		slog.Info("Repository retrieved successfully", "workspace", workspace, "repo", repoSlug)
+		return repo, nil
+	}
+
+	// Bitbucket Cloud
+	var repo Repository
+	if err := json.Unmarshal(body, &repo); err != nil {
+		slog.Error("Failed to parse Bitbucket Cloud response", "error", err)
+		return nil, err
+	}
+
+	slog.Info("Repository retrieved successfully", "fullName", repo.FullName)
+	return &repo, nil
 }
