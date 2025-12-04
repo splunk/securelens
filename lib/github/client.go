@@ -81,11 +81,7 @@ func (c *Client) ListRepositories(ctx context.Context, owner string, limit int) 
 		var resp *github.Response
 		var err error
 
-		if owner == "" {
-			repos, resp, err = c.client.Repositories.List(ctx, "", options)
-		} else {
-			repos, resp, err = c.client.Repositories.List(ctx, owner, options)
-		}
+		repos, resp, err = c.client.Repositories.List(ctx, owner, options)
 
 		if err != nil {
 			slog.Error("Failed to fetch GitHub repositories", "error", err, "owner", owner, "page", options.Page)
