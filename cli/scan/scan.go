@@ -20,17 +20,18 @@ import (
 )
 
 type DiscoveredRepository struct {
-	Provider    string `json:"provider"`
-	Name        string `json:"name"`
-	FullName    string `json:"full_name"`
-	URL         string `json:"url"`
-	IsPrivate   bool   `json:"is_private"`
-	Language    string `json:"language"`
-	Description string `json:"description"`
-	Source      string `json:"source"`
+	Provider    string   `json:"provider"`
+	Name        string   `json:"name"`
+	FullName    string   `json:"full_name"`
+	URL         string   `json:"url"`
+	IsPrivate   bool     `json:"is_private"`
+	Language    string   `json:"language"`
+	Description string   `json:"description"`
+	Source      string   `json:"source"`
+	Branches    []string `json:"branches,omitempty"`
 }
 
-func discoverRepositories(ctx context.Context, cfg *config.Config, limit int) ([]DiscoveredRepository, error) {
+func discoverRepositories(ctx context.Context, cfg *config.Config, limit int, includeBranches bool) ([]DiscoveredRepository, error) {
 	slog.Info("Starting repository discovery", "limit", limit)
 
 	var allRepos []DiscoveredRepository
@@ -42,7 +43,7 @@ func discoverRepositories(ctx context.Context, cfg *config.Config, limit int) ([
 
 	// Gitlab
 	if !limitReached() {
-		gitlabRepos, err := discoverFromGitLab(ctx, cfg.Git.GitLab, remaining)
+		gitlabRepos, err := discoverFromGitLab(ctx, cfg.Git.GitLab, remaining, includeBranches)
 		if err != nil {
 			slog.Error("Error discovering GitLab repositories", "error", err)
 		} else {
@@ -56,7 +57,7 @@ func discoverRepositories(ctx context.Context, cfg *config.Config, limit int) ([
 
 	// Github
 	if !limitReached() {
-		githubRepos, err := discoverFromGitHub(ctx, cfg.Git.GitHub, remaining)
+		githubRepos, err := discoverFromGitHub(ctx, cfg.Git.GitHub, remaining, includeBranches)
 		if err != nil {
 			slog.Error("Error discovering GitHub repositories", "error", err)
 		} else {
@@ -70,7 +71,7 @@ func discoverRepositories(ctx context.Context, cfg *config.Config, limit int) ([
 
 	// Bitbucket
 	if !limitReached() {
-		bitbucketRepos, err := discoverFromBitbucket(ctx, cfg.Git.Bitbucket, remaining)
+		bitbucketRepos, err := discoverFromBitbucket(ctx, cfg.Git.Bitbucket, remaining, includeBranches)
 		if err != nil {
 			slog.Error("Error discovering Bitbucket repositories", "error", err)
 		} else {
@@ -88,7 +89,7 @@ func discoverRepositories(ctx context.Context, cfg *config.Config, limit int) ([
 	return allRepos, nil
 }
 
-func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig, limit int) ([]DiscoveredRepository, error) {
+func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig, limit int, includeBranches bool) ([]DiscoveredRepository, error) {
 	var repos []DiscoveredRepository
 
 	for _, cfg := range configs {
@@ -111,7 +112,7 @@ func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig, limi
 		}
 
 		for _, project := range projects {
-			repos = append(repos, DiscoveredRepository{
+			discovered := DiscoveredRepository{
 				Provider:    "gitlab",
 				Name:        project.Name,
 				FullName:    project.PathWithNS,
@@ -120,14 +121,24 @@ func discoverFromGitLab(ctx context.Context, configs []config.GitLabConfig, limi
 				Language:    "",
 				Description: "",
 				Source:      cfg.Name,
-			})
+			}
+
+			if includeBranches {
+				branches, err := client.ListBranches(ctx, project.ID)
+				if err != nil {
+					slog.Warn("Failed to list Gitlab branches", "project", project.PathWithNS, "error", err)
+				} else {
+					discovered.Branches = branches
+				}
+			}
+			repos = append(repos, discovered)
 		}
 		slog.Info("Discovered repositories from GitLab instance", "instance", cfg.Name, "count", len(projects))
 	}
 	return repos, nil
 }
 
-func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig, limit int) ([]DiscoveredRepository, error) {
+func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig, limit int, includeBranches bool) ([]DiscoveredRepository, error) {
 	var repos []DiscoveredRepository
 
 	for _, cfg := range configs {
@@ -150,12 +161,12 @@ func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig, limi
 		}
 
 		if err != nil {
-			slog.Error("Failed to list GitLab projects", "instance", cfg.Name, "error", err)
+			slog.Error("Failed to list GitHub repositories", "instance", cfg.Name, "error", err)
 			continue
 		}
 
 		for _, repo := range githubRepos {
-			repos = append(repos, DiscoveredRepository{
+			discovered := DiscoveredRepository{
 				Provider:  "github",
 				Name:      repo.Name,
 				FullName:  repo.FullName,
@@ -163,14 +174,27 @@ func discoverFromGitHub(ctx context.Context, configs []config.GitHubConfig, limi
 				IsPrivate: repo.Private,
 				Language:  repo.Language,
 				Source:    cfg.Name,
-			})
+			}
+
+			if includeBranches {
+				parts := strings.Split(repo.FullName, "/")
+				if len(parts) == 2 {
+					branches, err := client.ListBranches(ctx, parts[0], parts[1])
+					if err != nil {
+						slog.Warn("Failed to list GitHub branches", "repo", repo.FullName, "error", err)
+					} else {
+						discovered.Branches = branches
+					}
+				}
+			}
+			repos = append(repos, discovered)
 		}
 		slog.Info("Discovered repositories from GitHub instance", "instance", cfg.Name, "count", len(githubRepos))
 	}
 	return repos, nil
 }
 
-func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig, limit int) ([]DiscoveredRepository, error) {
+func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig, limit int, includeBranches bool) ([]DiscoveredRepository, error) {
 	var repos []DiscoveredRepository
 
 	for _, cfg := range configs {
@@ -202,7 +226,7 @@ func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig
 				cloneURL = repo.Links.Clone[0].Href
 			}
 
-			repos = append(repos, DiscoveredRepository{
+			discovered := DiscoveredRepository{
 				Provider:    "bitbucket",
 				Name:        repo.Name,
 				FullName:    repo.FullName,
@@ -211,7 +235,20 @@ func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig
 				Language:    repo.Language,
 				Description: "",
 				Source:      cfg.Name,
-			})
+			}
+
+			if includeBranches {
+				parts := strings.Split(repo.FullName, "/")
+				if len(parts) == 2 {
+					branches, err := client.ListBranches(ctx, parts[0], parts[1])
+					if err != nil {
+						slog.Warn("Failed to list Bitbucket branches", "repo", repo.FullName, "error", err)
+					} else {
+						discovered.Branches = branches
+					}
+				}
+			}
+			repos = append(repos, discovered)
 		}
 		slog.Info("Discovered repositories from Bitbucket instance", "instance", cfg.Name, "count", len(bitbucketRepos))
 	}
@@ -292,13 +329,14 @@ Examples:
 
 func newDiscoverCmd() *cobra.Command {
 	var (
-		configPath string
-		format     string
-		outputFile string
-		countOnly  bool
-		repoName   string
-		provider   string
-		limit      int
+		configPath      string
+		format          string
+		outputFile      string
+		countOnly       bool
+		repoName        string
+		provider        string
+		limit           int
+		includeBranches bool
 	)
 
 	cmd := &cobra.Command{
@@ -340,7 +378,7 @@ Examples:
 			}
 
 			slog.Info("Discovering repositories within scope")
-			repos, err := discoverRepositories(ctx, cfg, limit)
+			repos, err := discoverRepositories(ctx, cfg, limit, includeBranches)
 			if err != nil {
 				slog.Error("Failed to discover repositories", "error", err)
 				return
@@ -368,6 +406,7 @@ Examples:
 	scopeCmd.Flags().StringVar(&repoName, "repo", "", "check if a specific repository is accessible (format: owner/repo)")
 	scopeCmd.Flags().StringVar(&provider, "provider", "", "provider for the repo (github, gitlab, bitbucket) when using --repo")
 	scopeCmd.Flags().IntVar(&limit, "limit", 0, "limit the number of repositories to scan (0 for no limit)")
+	scopeCmd.Flags().BoolVar(&includeBranches, "include-branches", false, "include all accessible branches for each repository")
 
 	cmd.AddCommand(scopeCmd)
 
@@ -423,7 +462,19 @@ func formatTable(repos []DiscoveredRepository, outputFile string) error {
 
 	table := tablewriter.NewWriter(writer)
 
-	table.Header("Provider", "Name", "Full Name", "URL", "Private", "Language", "Source")
+	hasBranches := false
+	for _, repo := range repos {
+		if len(repo.Branches) > 0 {
+			hasBranches = true
+			break
+		}
+	}
+
+	headers := []string{"Provider", "Name", "Full Name", "URL", "Private", "Language", "Source"}
+	if hasBranches {
+		headers = append(headers, "Branches")
+	}
+	table.Header(headers)
 
 	for _, repo := range repos {
 		private := "No"
@@ -431,7 +482,7 @@ func formatTable(repos []DiscoveredRepository, outputFile string) error {
 			private = "Yes"
 		}
 
-		err := table.Append(
+		row := []string{
 			repo.Provider,
 			repo.Name,
 			repo.FullName,
@@ -439,10 +490,16 @@ func formatTable(repos []DiscoveredRepository, outputFile string) error {
 			private,
 			repo.Language,
 			repo.Source,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to append row: %w", err)
 		}
+
+		if hasBranches {
+			branchesStr := strings.Join(repo.Branches, ", ")
+			if branchesStr == "" {
+				branchesStr = "-"
+			}
+			row = append(row, branchesStr)
+		}
+		table.Append(row)
 	}
 
 	return table.Render()

@@ -320,3 +320,48 @@ func (c *Client) GetRepository(ctx context.Context, workspace, repoSlug string) 
 	slog.Info("Repository retrieved successfully", "fullName", repo.FullName)
 	return &repo, nil
 }
+
+func (c *Client) ListBranches(ctx context.Context, workspace, repoSlug string) ([]string, error) {
+	slog.Info("Listing branches for Bitbucket repository", "workspace", workspace, "repo", repoSlug)
+
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+
+	var url string
+	if c.isServerAPI() {
+		url = fmt.Sprintf("%s/projects/%s/repos/%s/branches", c.apiURL, workspace, repoSlug)
+	} else {
+		url = fmt.Sprintf("%s/repositories/%s/%s/refs/branches", c.apiURL, workspace, repoSlug)
+	}
+
+	body, err := c.makeAuthenticatedRequest(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		Values []struct {
+			Name      string `json:"name"`
+			ID        string `json:"id"`
+			DisplayID string `json:"displayId"`
+		} `json:"values"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		slog.Error("Failed to parse Bitbucket branches response", "error", err)
+		return nil, err
+	}
+
+	branchNames := make([]string, len(response.Values))
+	for i, branch := range response.Values {
+		if branch.DisplayID != "" {
+			branchNames[i] = branch.DisplayID
+		} else if branch.Name != "" {
+			branchNames[i] = branch.Name
+		} else {
+			branchNames[i] = branch.ID
+		}
+	}
+
+	return branchNames, nil
+}
