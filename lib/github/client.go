@@ -188,3 +188,33 @@ func (c *Client) GetRepository(ctx context.Context, owner, repo string) (*Reposi
 
 	return repository, nil
 }
+
+func (c *Client) ListBranches(ctx context.Context, owner, repo string) ([]string, error) {
+	slog.Info("Listing branches for GitHub repository", "owner", owner, "repo", repo)
+
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+
+	var allBranches []string
+	opts := &github.BranchListOptions{
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+
+	for {
+		branches, resp, err := c.client.Repositories.ListBranches(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, branch := range branches {
+			allBranches = append(allBranches, branch.GetName())
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return allBranches, nil
+}

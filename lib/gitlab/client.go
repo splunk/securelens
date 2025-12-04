@@ -142,3 +142,35 @@ func (c *Client) GetProject(ctx context.Context, projectPath string) (*Project, 
 
 	return project, nil
 }
+
+func (c *Client) ListBranches(ctx context.Context, projectID int) ([]string, error) {
+	slog.Info("Listing branches for GitLab project", "projectID", projectID)
+
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+
+	var allBranches []string
+	opts := &gitlab.ListBranchesOptions{
+		ListOptions: gitlab.ListOptions{PerPage: 100},
+	}
+
+	for {
+		branches, resp, err := c.client.Branches.ListBranches(projectID, opts)
+		if err != nil {
+			slog.Error("Failed to list branches", "projectID", projectID, "error", err)
+			return nil, err
+		}
+
+		for _, branch := range branches {
+			allBranches = append(allBranches, branch.Name)
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allBranches, nil
+}
