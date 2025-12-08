@@ -60,7 +60,7 @@ func TestListRepositories(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := context.Background()
-		repos, err := client.ListRepositories(ctx, "")
+		repos, err := client.ListRepositories(ctx, "", 0)
 
 		// We expect an error since we don't have a valid token
 		// But repos should be non-nil (empty slice)
@@ -74,7 +74,7 @@ func TestListRepositories(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := context.Background()
-		repos, err := client.ListRepositories(ctx, "octocat")
+		repos, err := client.ListRepositories(ctx, "octocat", 0)
 
 		// We expect an error since we don't have a valid token
 		assert.NotNil(t, repos)
@@ -91,7 +91,7 @@ func TestListRepositoriesContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err = client.ListRepositories(ctx, "")
+	_, err = client.ListRepositories(ctx, "", 0)
 	assert.Error(t, err, "Should return error when context is cancelled")
 }
 
@@ -101,7 +101,7 @@ func TestListRepositoriesForOrganizations(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := context.Background()
-		repos, err := client.ListRepositoriesForOrganizations(ctx, []string{})
+		repos, err := client.ListRepositoriesForOrganizations(ctx, []string{}, 0)
 
 		// Should fall back to authenticated user's repos
 		assert.NotNil(t, repos)
@@ -115,7 +115,7 @@ func TestListRepositoriesForOrganizations(t *testing.T) {
 
 		ctx := context.Background()
 		orgs := []string{"org1", "org2"}
-		repos, err := client.ListRepositoriesForOrganizations(ctx, orgs)
+		repos, err := client.ListRepositoriesForOrganizations(ctx, orgs, 0)
 
 		// Should attempt to fetch from both orgs (will fail with invalid token)
 		assert.NotNil(t, repos)

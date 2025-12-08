@@ -67,7 +67,7 @@ func TestListRepositories(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := context.Background()
-		repos, err := client.ListRepositories(ctx, "")
+		repos, err := client.ListRepositories(ctx, "", 0)
 
 		// We expect an error since we don't have valid credentials
 		// But repos should be non-nil (empty slice)
@@ -81,7 +81,7 @@ func TestListRepositories(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := context.Background()
-		repos, err := client.ListRepositories(ctx, "my-workspace")
+		repos, err := client.ListRepositories(ctx, "my-workspace", 0)
 
 		// We expect an error since we don't have valid credentials
 		assert.NotNil(t, repos)
@@ -98,38 +98,8 @@ func TestListRepositoriesContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err = client.ListRepositories(ctx, "")
+	_, err = client.ListRepositories(ctx, "", 0)
 	assert.Error(t, err, "Should return error when context is cancelled")
-}
-
-func TestListRepositoriesForWorkspaces(t *testing.T) {
-	t.Run("Empty workspaces list", func(t *testing.T) {
-		client, err := NewClient(testUsername, testAppPassword, defaultBitbucketURL)
-		require.NoError(t, err)
-
-		ctx := context.Background()
-		repos, err := client.ListRepositoriesForWorkspaces(ctx, []string{})
-
-		// Should fall back to authenticated user's repos
-		assert.NotNil(t, repos)
-		// Will get error due to invalid credentials, but that's okay for this test
-		t.Logf("ListRepositoriesForWorkspaces with empty list returned %d repos", len(repos))
-	})
-
-	t.Run("Multiple workspaces", func(t *testing.T) {
-		client, err := NewClient(testUsername, testAppPassword, defaultBitbucketURL)
-		require.NoError(t, err)
-
-		ctx := context.Background()
-		workspaces := []string{"workspace1", "workspace2"}
-		repos, err := client.ListRepositoriesForWorkspaces(ctx, workspaces)
-
-		// Should attempt to fetch from both workspaces (will fail with invalid credentials)
-		assert.NotNil(t, repos)
-		// No error returned - method continues on individual workspace failures
-		assert.NoError(t, err, "Should not return error even when individual workspaces fail")
-		t.Logf("ListRepositoriesForWorkspaces returned %d repos for %d workspaces", len(repos), len(workspaces))
-	})
 }
 
 func TestBuildRepositoriesURL(t *testing.T) {
