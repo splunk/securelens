@@ -111,6 +111,10 @@ type TrufflehogSecret struct {
 				Link       string `json:"link"`
 				Visibility string `json:"visibility"`
 			} `json:"Git"`
+			Filesystem struct {
+				File string `json:"file"`
+				Line int64  `json:"line"`
+			} `json:"Filesystem"`
 		} `json:"Data"`
 	} `json:"SourceMetadata"`
 	SourceID     int64  `json:"SourceID"`

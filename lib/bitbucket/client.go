@@ -112,11 +112,7 @@ func (c *Client) ListRepositories(ctx context.Context, workspace string, limit i
 	apiURL := c.buildRepositoriesURL(workspace)
 	page := 1
 
-	for {
-		if limit > 0 && len(allRepos) >= limit {
-			break
-		}
-
+	for limit <= 0 || len(allRepos) < limit {
 		remaining := limit - len(allRepos)
 		repos, hasMore, err := c.fetchRepositoriesPage(ctx, apiURL, page, remaining)
 		if err != nil {
@@ -194,6 +190,7 @@ func (c *Client) parseCloudResponse(body []byte, page int, remaining int) ([]Rep
 	repos := response.Values
 	if remaining > 0 && len(repos) > remaining {
 		repos = repos[:remaining]
+		return repos, response.Next != "", nil
 	}
 
 	slog.Info("Fetched Bitbucket Cloud repositories page", "page", page, "count", len(response.Values))
@@ -250,7 +247,7 @@ func (c *Client) makeAuthenticatedRequest(ctx context.Context, url string) ([]by
 		slog.Error("Failed to fetch from Bitbucket", "error", err)
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -319,6 +316,70 @@ func (c *Client) GetRepository(ctx context.Context, workspace, repoSlug string) 
 
 	slog.Info("Repository retrieved successfully", "fullName", repo.FullName)
 	return &repo, nil
+}
+
+// SearchRepositories searches for repositories matching a query string
+// For Bitbucket Cloud, uses the q parameter with name filter
+// For Bitbucket Server, uses the name filter
+func (c *Client) SearchRepositories(ctx context.Context, workspace, query string, limit int) ([]Repository, error) {
+	slog.Info("Searching Bitbucket repositories", "apiURL", c.apiURL, "workspace", workspace, "query", query, "limit", limit)
+
+	allRepos := []Repository{}
+	page := 1
+
+	for limit <= 0 || len(allRepos) < limit {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return []Repository{}, err
+		}
+
+		var pageURL string
+		if c.isServerAPI() {
+			start := (page - 1) * 100
+			pageURL = fmt.Sprintf("%s/repos?start=%d&limit=100&name=%s", c.apiURL, start, query)
+		} else {
+			// Bitbucket Cloud uses q parameter for filtering
+			// Support searching by name contains
+			if workspace != "" {
+				pageURL = fmt.Sprintf("%s/repositories/%s?page=%d&pagelen=100&q=name~\"%s\"", c.apiURL, workspace, page, query)
+			} else {
+				pageURL = fmt.Sprintf("%s/repositories?page=%d&pagelen=100&q=name~\"%s\"", c.apiURL, page, query)
+			}
+		}
+
+		body, err := c.makeAuthenticatedRequest(ctx, pageURL)
+		if err != nil {
+			return []Repository{}, err
+		}
+
+		var repos []Repository
+		var hasMore bool
+		if c.isServerAPI() {
+			remaining := limit - len(allRepos)
+			repos, hasMore, err = c.parseServerResponse(body, page, remaining)
+		} else {
+			remaining := limit - len(allRepos)
+			repos, hasMore, err = c.parseCloudResponse(body, page, remaining)
+		}
+
+		if err != nil {
+			return []Repository{}, err
+		}
+
+		allRepos = append(allRepos, repos...)
+
+		slog.Debug("Searched Bitbucket repositories page", "query", query, "page", page, "count", len(repos), "total", len(allRepos))
+
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
+		if !hasMore {
+			break
+		}
+		page++
+	}
+
+	slog.Info("Repository search completed", "query", query, "total", len(allRepos))
+	return allRepos, nil
 }
 
 func (c *Client) ListBranches(ctx context.Context, workspace, repoSlug string) ([]string, error) {

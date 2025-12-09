@@ -91,6 +91,11 @@ func discoverRepositories(ctx context.Context, cfg *config.Config, limit int, in
 	return allRepos, nil
 }
 
+// DiscoverRepositories is the exported version for use by other packages (like UI)
+func DiscoverRepositories(ctx context.Context, cfg *config.Config, limit int, includeBranches bool) ([]DiscoveredRepository, error) {
+	return discoverRepositories(ctx, cfg, limit, includeBranches)
+}
+
 func setBranches(ctx context.Context, includeBranches bool, fetchBranches func() ([]string, error)) []string {
 	if !includeBranches {
 		return nil
@@ -257,6 +262,32 @@ func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig
 	return repos, nil
 }
 
+// FilterConfigByProvider creates a filtered config with only the specified provider (exported for UI use)
+func FilterConfigByProvider(cfg *config.Config, provider string) *config.Config {
+	filtered := &config.Config{
+		Database:  cfg.Database,
+		SRS:       cfg.SRS,
+		Scanners:  cfg.Scanners,
+		Scanning:  cfg.Scanning,
+		Output:    cfg.Output,
+		Discovery: cfg.Discovery,
+	}
+
+	switch strings.ToLower(provider) {
+	case "github":
+		filtered.Git.GitHub = cfg.Git.GitHub
+	case "gitlab":
+		filtered.Git.GitLab = cfg.Git.GitLab
+	case "bitbucket":
+		filtered.Git.Bitbucket = cfg.Git.Bitbucket
+	default:
+		slog.Warn("Unknown provider, returning full config", "provider", provider)
+		return cfg
+	}
+
+	return filtered
+}
+
 // NewScanCmd creates the scan command
 func NewScanCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -305,6 +336,7 @@ type RepoScanOptions struct {
 	PollInterval int      // Seconds between status polls
 	MaxWait      int      // Maximum minutes to wait for results
 	AssetsDir    string   // Directory for scanner assets (rules, etc.)
+	LocalPath    string   // Local directory to scan instead of cloning (standalone mode)
 }
 
 // ScanReport represents the scan results
@@ -317,6 +349,227 @@ type ScanReport struct {
 	Scanners   []string               `json:"scanners"`
 	Results    map[string]interface{} `json:"results,omitempty"`
 	Error      string                 `json:"error,omitempty"`
+}
+
+// ScanRepository runs a scan on a discovered repository (exported for UI use)
+func ScanRepository(ctx context.Context, cfg *config.Config, repo DiscoveredRepository, scanMode string) (*ScanReport, error) {
+	return ScanRepositoryWithBranch(ctx, cfg, repo, "main", scanMode)
+}
+
+// ScanRepositoryWithBranch runs a scan on a discovered repository with specific branch (exported for UI use)
+func ScanRepositoryWithBranch(ctx context.Context, cfg *config.Config, repo DiscoveredRepository, branch string, scanMode string) (*ScanReport, error) {
+	// Build repo URL info
+	repoInfo := &repository.RepoURLInfo{
+		URL:      repo.URL,
+		Owner:    strings.Split(repo.FullName, "/")[0],
+		Repo:     repo.Name,
+		Provider: mapProviderToRepoProvider(repo.Provider),
+		Branch:   branch,
+	}
+
+	// Default scanners
+	scanners := []string{"opengrep", "trivy", "trufflehog"}
+
+	opts := &RepoScanOptions{
+		Branch:       branch,
+		Scanners:     scanners,
+		Parallel:     true,
+		AssetsDir:    "assets",
+		PollInterval: 10,
+		MaxWait:      30,
+		Debug:        true,      // Always save raw scanner reports
+		OutputDir:    "reports", // Default reports directory
+	}
+
+	// Auto-detect mode if not specified
+	if scanMode == "" {
+		scanMode = "standalone"
+		if srsURL := os.Getenv("SRS_ORCHESTRATOR_API_ENDPOINT"); srsURL != "" {
+			scanMode = "remote"
+			opts.SRSURL = srsURL
+		} else if cfg != nil && cfg.SRS.APIURL != "" {
+			scanMode = "remote"
+			opts.SRSURL = cfg.SRS.APIURL
+		}
+	}
+
+	if scanMode == "remote" {
+		return executeRemoteScan(ctx, cfg, repoInfo, scanners, opts)
+	}
+	return executeStandaloneScan(ctx, cfg, repoInfo, scanners, opts)
+}
+
+// FetchBranches retrieves branches for a discovered repository (exported for UI use)
+func FetchBranches(ctx context.Context, cfg *config.Config, repo DiscoveredRepository) ([]string, error) {
+	parts := strings.Split(repo.FullName, "/")
+	if len(parts) < 2 {
+		return []string{"main"}, nil
+	}
+	owner := parts[0]
+	repoName := parts[1]
+
+	switch repo.Provider {
+	case "github":
+		for _, gh := range cfg.Git.GitHub {
+			client, err := github.NewClient(gh.Token, gh.APIURL)
+			if err != nil {
+				continue
+			}
+			branches, err := client.ListBranches(ctx, owner, repoName)
+			if err == nil {
+				return branches, nil
+			}
+		}
+	case "gitlab":
+		for _, gl := range cfg.Git.GitLab {
+			client, err := gitlab.NewClient(gl.Token, gl.APIURL)
+			if err != nil {
+				continue
+			}
+			// For GitLab, we need the project ID or path
+			project, err := client.GetProject(ctx, repo.FullName)
+			if err != nil {
+				continue
+			}
+			branches, err := client.ListBranches(ctx, project.ID)
+			if err == nil {
+				return branches, nil
+			}
+		}
+	case "bitbucket":
+		for _, bb := range cfg.Git.Bitbucket {
+			client, err := bitbucket.NewClient(bb.Username, bb.AppPassword, bb.APIURL)
+			if err != nil {
+				continue
+			}
+			branches, err := client.ListBranches(ctx, owner, repoName)
+			if err == nil {
+				return branches, nil
+			}
+		}
+	}
+
+	// Default to main if we can't fetch branches
+	return []string{"main"}, nil
+}
+
+// SearchRepositories searches for repositories matching a query using provider APIs (exported for UI use)
+func SearchRepositories(ctx context.Context, cfg *config.Config, query string, provider string, limit int) ([]DiscoveredRepository, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("no configuration provided")
+	}
+
+	var repos []DiscoveredRepository
+
+	// Search based on provider filter
+	switch provider {
+	case "github":
+		for _, gh := range cfg.Git.GitHub {
+			client, err := github.NewClient(gh.Token, gh.APIURL)
+			if err != nil {
+				continue
+			}
+			// Build search query - search within orgs if configured
+			searchQuery := query
+			if len(gh.Organizations) > 0 {
+				// Search within first org (or could combine with OR)
+				searchQuery = fmt.Sprintf("%s org:%s", query, gh.Organizations[0])
+			}
+			results, err := client.SearchRepositories(ctx, searchQuery, limit)
+			if err != nil {
+				continue
+			}
+			for _, r := range results {
+				repos = append(repos, DiscoveredRepository{
+					Provider:    "github",
+					Name:        r.Name,
+					FullName:    r.FullName,
+					URL:         r.CloneURL,
+					IsPrivate:   r.Private,
+					Description: r.Language,
+					Source:      "search",
+				})
+			}
+		}
+
+	case "gitlab":
+		for _, gl := range cfg.Git.GitLab {
+			client, err := gitlab.NewClient(gl.Token, gl.APIURL)
+			if err != nil {
+				continue
+			}
+			results, err := client.SearchProjects(ctx, query, limit)
+			if err != nil {
+				continue
+			}
+			for _, p := range results {
+				repos = append(repos, DiscoveredRepository{
+					Provider:    "gitlab",
+					Name:        p.Name,
+					FullName:    p.PathWithNS,
+					URL:         p.HTTPURL,
+					IsPrivate:   p.Visibility == "private",
+					Description: "",
+					Source:      "search",
+				})
+			}
+		}
+
+	case "bitbucket":
+		for _, bb := range cfg.Git.Bitbucket {
+			client, err := bitbucket.NewClient(bb.Username, bb.AppPassword, bb.APIURL)
+			if err != nil {
+				continue
+			}
+			results, err := client.SearchRepositories(ctx, bb.Workspace, query, limit)
+			if err != nil {
+				continue
+			}
+			for _, r := range results {
+				cloneURL := ""
+				for _, link := range r.Links.Clone {
+					if link.Name == "https" {
+						cloneURL = link.Href
+						break
+					}
+				}
+				repos = append(repos, DiscoveredRepository{
+					Provider:    "bitbucket",
+					Name:        r.Name,
+					FullName:    r.FullName,
+					URL:         cloneURL,
+					IsPrivate:   r.IsPrivate,
+					Description: r.Language,
+					Source:      "search",
+				})
+			}
+		}
+
+	default:
+		// Search all providers
+		ghRepos, _ := SearchRepositories(ctx, cfg, query, "github", limit)
+		repos = append(repos, ghRepos...)
+		glRepos, _ := SearchRepositories(ctx, cfg, query, "gitlab", limit)
+		repos = append(repos, glRepos...)
+		bbRepos, _ := SearchRepositories(ctx, cfg, query, "bitbucket", limit)
+		repos = append(repos, bbRepos...)
+	}
+
+	return repos, nil
+}
+
+// mapProviderToRepoProvider converts string provider to repository.GitProvider
+func mapProviderToRepoProvider(provider string) repository.GitProvider {
+	switch strings.ToLower(provider) {
+	case "github":
+		return repository.GitHub
+	case "gitlab":
+		return repository.GitLab
+	case "bitbucket":
+		return repository.Bitbucket
+	default:
+		return repository.Unknown
+	}
 }
 
 func newRepoCmd() *cobra.Command {
@@ -334,6 +587,10 @@ URL Formats (positional argument or --url flag):
 
 Alternatively, use explicit flags:
   --url https://github.com/org/repo --branch develop --commit abc123
+
+Local Path Mode (standalone only):
+  --local-path ./        : Scan a local directory instead of cloning
+                           Useful in CI/CD where code is already checked out
 
 Scan Modes:
   --mode local           : Clone locally and run built-in scanners (default)
@@ -377,6 +634,10 @@ Examples:
   securelens scan repo https://github.com/myorg/myrepo --mode standalone
   securelens scan repo https://github.com/myorg/myrepo --mode standalone --scanners opengrep --scanners trivy
 
+  # Scan a local directory (CI/CD mode - no cloning needed)
+  securelens scan repo --local-path . --mode standalone --debug
+  securelens scan repo --local-path /path/to/repo --mode standalone --branch main --commit abc123
+
   # Output raw results to file
   securelens scan repo https://github.com/myorg/myrepo --output results.json
 
@@ -397,8 +658,18 @@ Examples:
 				opts.URL = args[0]
 			}
 
-			if opts.URL == "" {
-				return fmt.Errorf("repository URL is required (provide as argument or --url flag)")
+			// If local-path is provided, URL is optional
+			if opts.LocalPath != "" {
+				// Validate local path exists
+				if _, err := os.Stat(opts.LocalPath); os.IsNotExist(err) {
+					return fmt.Errorf("local path does not exist: %s", opts.LocalPath)
+				}
+				// local-path only works with standalone mode
+				if opts.Mode != ScanModeStandalone {
+					return fmt.Errorf("--local-path only works with --mode standalone")
+				}
+			} else if opts.URL == "" {
+				return fmt.Errorf("repository URL is required (provide as argument, --url flag, or use --local-path for local directories)")
 			}
 
 			return runRepoScan(cmd.Context(), &opts)
@@ -409,6 +680,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.URL, "url", "", "repository URL (alternative to positional argument)")
 	cmd.Flags().StringVarP(&opts.Branch, "branch", "b", "", "branch to scan (overrides URL-embedded branch)")
 	cmd.Flags().StringVar(&opts.Commit, "commit", "", "specific commit to scan (overrides URL-embedded commit)")
+	cmd.Flags().StringVar(&opts.LocalPath, "local-path", "", "local directory to scan instead of cloning (standalone mode only, useful for CI/CD)")
 
 	// Scanner selection flags
 	cmd.Flags().StringSliceVar(&opts.Scanners, "scanners", []string{}, "scanners to run (fossa, semgrep, trufflehog); default: all")
@@ -493,6 +765,7 @@ func runRepoScan(ctx context.Context, opts *RepoScanOptions) error {
 		"commit", opts.Commit,
 		"scanners", opts.Scanners,
 		"mode", opts.Mode,
+		"local_path", opts.LocalPath,
 	)
 
 	// Load configuration
@@ -502,19 +775,29 @@ func runRepoScan(ctx context.Context, opts *RepoScanOptions) error {
 		cfg = &config.Config{}
 	}
 
-	// Parse repository URL
-	repoInfo, err := parseRepoInput(opts)
-	if err != nil {
-		return fmt.Errorf("failed to parse repository URL: %w", err)
+	// Parse repository URL (or create minimal info for local-path mode)
+	var repoInfo *repository.RepoURLInfo
+	if opts.LocalPath != "" && opts.URL == "" {
+		// Local path mode without URL - create minimal repo info
+		repoInfo = &repository.RepoURLInfo{
+			Branch: opts.Branch,
+			Commit: opts.Commit,
+		}
+		slog.Info("Using local path mode", "path", opts.LocalPath, "branch", opts.Branch, "commit", opts.Commit)
+	} else {
+		// Parse repository URL
+		repoInfo, err = parseRepoInput(opts)
+		if err != nil {
+			return fmt.Errorf("failed to parse repository URL: %w", err)
+		}
+		slog.Info("Parsed repository info",
+			"provider", repoInfo.Provider,
+			"owner", repoInfo.Owner,
+			"repo", repoInfo.Repo,
+			"branch", repoInfo.Branch,
+			"commit", repoInfo.Commit,
+		)
 	}
-
-	slog.Info("Parsed repository info",
-		"provider", repoInfo.Provider,
-		"owner", repoInfo.Owner,
-		"repo", repoInfo.Repo,
-		"branch", repoInfo.Branch,
-		"commit", repoInfo.Commit,
-	)
 
 	// Determine scanners to run based on mode
 	scanners := opts.Scanners
@@ -531,7 +814,12 @@ func runRepoScan(ctx context.Context, opts *RepoScanOptions) error {
 
 	if opts.DryRun {
 		fmt.Printf("Dry run - would scan:\n")
-		fmt.Printf("  Repository: %s\n", repoInfo.URL)
+		if opts.LocalPath != "" {
+			fmt.Printf("  Local Path: %s\n", opts.LocalPath)
+		}
+		if repoInfo.URL != "" {
+			fmt.Printf("  Repository: %s\n", repoInfo.URL)
+		}
 		fmt.Printf("  Branch:     %s\n", repoInfo.Branch)
 		fmt.Printf("  Commit:     %s\n", repoInfo.Commit)
 		fmt.Printf("  Scanners:   %v\n", scanners)
@@ -613,7 +901,7 @@ func executeLocalScan(ctx context.Context, cfg *config.Config, repoInfo *reposit
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
-	defer cloneManager.Cleanup(cloneResult)
+	defer func() { _ = cloneManager.Cleanup(cloneResult) }()
 
 	report := &ScanReport{
 		Repository: repoInfo.URL,
@@ -684,7 +972,7 @@ func executeRemoteScan(ctx context.Context, cfg *config.Config, repoInfo *reposi
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
-	defer cloneManager.Cleanup(cloneResult)
+	defer func() { _ = cloneManager.Cleanup(cloneResult) }()
 
 	slog.Info("Step 2/4: Repository cloned and zipped",
 		"path", cloneResult.Path,
@@ -781,50 +1069,79 @@ func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *re
 		return nil, fmt.Errorf("required standalone tools are not installed - see instructions above")
 	}
 
-	// Create auth provider from config
-	auth := repository.NewAuthProviderFromConfig(cfg)
+	var scanPath string
+	var branch string
+	var commit string
+	var repoURL string
 
-	// Create clone manager
-	cloneManager := repository.NewCloneManager("", auth)
-
-	// Build clone URL if not already set
-	if repoInfo.CloneURL == "" && repoInfo.Provider != repository.Unknown {
-		switch repoInfo.Provider {
-		case repository.GitHub:
-			repoInfo.CloneURL = fmt.Sprintf("https://github.com/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
-		case repository.GitLab:
-			baseURL := "https://gitlab.com"
-			if len(cfg.Git.GitLab) > 0 && cfg.Git.GitLab[0].APIURL != "" {
-				baseURL = strings.TrimSuffix(cfg.Git.GitLab[0].APIURL, "/api/v4")
-			}
-			repoInfo.CloneURL = fmt.Sprintf("%s/%s/%s.git", baseURL, repoInfo.Owner, repoInfo.Repo)
-		case repository.Bitbucket:
-			repoInfo.CloneURL = fmt.Sprintf("https://bitbucket.org/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+	// Check if we're using local path mode (no cloning needed)
+	if opts.LocalPath != "" {
+		// Use local path directly - no cloning
+		absPath, err := filepath.Abs(opts.LocalPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve local path: %w", err)
 		}
-	}
+		scanPath = absPath
+		branch = opts.Branch
+		commit = opts.Commit
+		// Use URL if provided, otherwise use local path as identifier
+		if repoInfo != nil && repoInfo.URL != "" {
+			repoURL = repoInfo.URL
+		} else {
+			repoURL = "local://" + absPath
+		}
+		slog.Info("Using local path for standalone scan", "path", scanPath, "branch", branch, "commit", commit)
+	} else {
+		// Clone repository as before
+		// Create auth provider from config
+		auth := repository.NewAuthProviderFromConfig(cfg)
 
-	// Clone repository
-	slog.Info("Cloning repository for standalone scan", "url", repoInfo.CloneURL)
-	cloneResult, err := cloneManager.Clone(ctx, repoInfo, true)
-	if err != nil {
-		return nil, fmt.Errorf("failed to clone repository: %w", err)
-	}
-	defer cloneManager.Cleanup(cloneResult)
+		// Create clone manager
+		cloneManager := repository.NewCloneManager("", auth)
 
-	slog.Info("Repository cloned", "path", cloneResult.Path, "branch", cloneResult.Branch, "commit", cloneResult.CommitHash)
+		// Build clone URL if not already set
+		if repoInfo.CloneURL == "" && repoInfo.Provider != repository.Unknown {
+			switch repoInfo.Provider {
+			case repository.GitHub:
+				repoInfo.CloneURL = fmt.Sprintf("https://github.com/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+			case repository.GitLab:
+				baseURL := "https://gitlab.com"
+				if len(cfg.Git.GitLab) > 0 && cfg.Git.GitLab[0].APIURL != "" {
+					baseURL = strings.TrimSuffix(cfg.Git.GitLab[0].APIURL, "/api/v4")
+				}
+				repoInfo.CloneURL = fmt.Sprintf("%s/%s/%s.git", baseURL, repoInfo.Owner, repoInfo.Repo)
+			case repository.Bitbucket:
+				repoInfo.CloneURL = fmt.Sprintf("https://bitbucket.org/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+			}
+		}
+
+		// Clone repository
+		slog.Info("Cloning repository for standalone scan", "url", repoInfo.CloneURL)
+		cloneResult, err := cloneManager.Clone(ctx, repoInfo, true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone repository: %w", err)
+		}
+		defer func() { _ = cloneManager.Cleanup(cloneResult) }()
+
+		slog.Info("Repository cloned", "path", cloneResult.Path, "branch", cloneResult.Branch, "commit", cloneResult.CommitHash)
+		scanPath = cloneResult.Path
+		branch = cloneResult.Branch
+		commit = cloneResult.CommitHash
+		repoURL = repoInfo.URL
+	}
 
 	// Run standalone scanners (parallel by default)
 	slog.Info("Running scanners", "parallel", opts.Parallel, "scanners", standaloneTypes)
-	standaloneResults, err := standalone.RunStandaloneScansParallel(ctx, cloneResult.Path, standaloneTypes, opts.AssetsDir, opts.Parallel)
+	standaloneResults, err := standalone.RunStandaloneScansParallel(ctx, scanPath, standaloneTypes, opts.AssetsDir, opts.Parallel)
 	if err != nil {
 		return nil, fmt.Errorf("standalone scan failed: %w", err)
 	}
 
 	// Convert standalone results to ScanReport format
 	report := &ScanReport{
-		Repository: repoInfo.URL,
-		Branch:     cloneResult.Branch,
-		Commit:     cloneResult.CommitHash,
+		Repository: repoURL,
+		Branch:     branch,
+		Commit:     commit,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		Status:     "completed",
 		Scanners:   scanners,
@@ -952,7 +1269,7 @@ func submitToSRS(ctx context.Context, srsURL, zipPath string, repoInfo *reposito
 	if err != nil {
 		return nil, fmt.Errorf("failed to open zip file: %w", err)
 	}
-	defer zipFile.Close()
+	defer func() { _ = zipFile.Close() }()
 
 	// Create multipart form
 	body := &bytes.Buffer{}
@@ -1003,7 +1320,7 @@ func submitToSRS(ctx context.Context, srsURL, zipPath string, repoInfo *reposito
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)
@@ -1178,17 +1495,17 @@ func outputScanTable(report *ScanReport, outputFile string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		writer = file
 	}
 
 	// Print header
-	fmt.Fprintf(writer, "\n=== SecureLens Scan Report ===\n\n")
-	fmt.Fprintf(writer, "Repository: %s\n", report.Repository)
-	fmt.Fprintf(writer, "Branch:     %s\n", report.Branch)
-	fmt.Fprintf(writer, "Commit:     %s\n", report.Commit)
-	fmt.Fprintf(writer, "Timestamp:  %s\n", report.Timestamp)
-	fmt.Fprintf(writer, "Status:     %s\n\n", report.Status)
+	_, _ = fmt.Fprintf(writer, "\n=== SecureLens Scan Report ===\n\n")
+	_, _ = fmt.Fprintf(writer, "Repository: %s\n", report.Repository)
+	_, _ = fmt.Fprintf(writer, "Branch:     %s\n", report.Branch)
+	_, _ = fmt.Fprintf(writer, "Commit:     %s\n", report.Commit)
+	_, _ = fmt.Fprintf(writer, "Timestamp:  %s\n", report.Timestamp)
+	_, _ = fmt.Fprintf(writer, "Status:     %s\n\n", report.Status)
 
 	// Print scanner results
 	table := tablewriter.NewWriter(writer)
@@ -1212,11 +1529,11 @@ func outputScanTable(report *ScanReport, outputFile string) error {
 			severityStr = extractSeveritySummary(result)
 		}
 
-		table.Append([]string{scanner, status, findings, severityStr})
+		_ = table.Append([]string{scanner, status, findings, severityStr})
 	}
 
-	table.Render()
-	fmt.Fprintln(writer)
+	_ = table.Render()
+	_, _ = fmt.Fprintln(writer)
 
 	return nil
 }
@@ -1267,6 +1584,11 @@ func extractFindingsCount(result map[string]interface{}) string {
 	}
 
 	return "-"
+}
+
+// ExtractSeveritySummary extracts severity breakdown from results (exported for UI use)
+func ExtractSeveritySummary(result map[string]interface{}) string {
+	return extractSeveritySummary(result)
 }
 
 // extractSeveritySummary extracts severity breakdown from results
@@ -1408,6 +1730,12 @@ Examples:
 			}
 
 			slog.Info("Discovering repositories within scope")
+
+			// If provider filter is specified (and not used with --repo), filter config
+			if provider != "" && repoName == "" {
+				cfg = FilterConfigByProvider(cfg, provider)
+			}
+
 			repos, err := discoverRepositories(ctx, cfg, limit, includeBranches)
 			if err != nil {
 				slog.Error("Failed to discover repositories", "error", err)
@@ -1434,7 +1762,7 @@ Examples:
 	scopeCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file (default: stdout)")
 	scopeCmd.Flags().BoolVar(&countOnly, "count-only", false, "only display the count of discovered repositories")
 	scopeCmd.Flags().StringVar(&repoName, "repo", "", "check if a specific repository is accessible (format: owner/repo)")
-	scopeCmd.Flags().StringVar(&provider, "provider", "", "provider for the repo (github, gitlab, bitbucket) when using --repo")
+	scopeCmd.Flags().StringVar(&provider, "provider", "", "filter by provider (github, gitlab, bitbucket) or specify provider for --repo")
 	scopeCmd.Flags().IntVar(&limit, "limit", 0, "limit the number of repositories to scan (0 for no limit)")
 	scopeCmd.Flags().BoolVar(&includeBranches, "include-branches", false, "include all accessible branches for each repository")
 
@@ -1455,11 +1783,11 @@ func outputResults(repos []DiscoveredRepository, format, outputFile string) erro
 	case "table":
 		return formatTable(repos, outputFile)
 	default:
-		return fmt.Errorf("Unsupported output format: %s", format)
+		return fmt.Errorf("unsupported output format: %s", format)
 	}
 
 	if err != nil {
-		return fmt.Errorf("Failed to format output: %w", err)
+		return fmt.Errorf("failed to format output: %w", err)
 	}
 
 	if outputFile != "" {
@@ -1484,9 +1812,9 @@ func formatTable(repos []DiscoveredRepository, outputFile string) error {
 	if outputFile != "" {
 		file, err := os.Create(outputFile)
 		if err != nil {
-			return fmt.Errorf("Failed to create output file: %w", err)
+			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		writer = file
 	}
 
@@ -1529,7 +1857,7 @@ func formatTable(repos []DiscoveredRepository, outputFile string) error {
 			}
 			row = append(row, branchesStr)
 		}
-		table.Append(row)
+		_ = table.Append(row)
 	}
 
 	return table.Render()
@@ -1638,10 +1966,12 @@ func checkBitbucketRepoAccess(ctx context.Context, configs []config.BitbucketCon
 // newResultsCmd creates the results command for viewing saved scan reports
 func newResultsCmd() *cobra.Command {
 	var (
-		reportsDir string
-		format     string
+		reportsDir  string
+		format      string
 		showDetails bool
-		scanner    string
+		scanner     string
+		outputFile  string
+		limit       int
 	)
 
 	cmd := &cobra.Command{
@@ -1659,7 +1989,13 @@ Examples:
   securelens scan results --list
 
   # Show detailed findings for a specific scanner
-  securelens scan results reports/splunk/securelens/main/abc123/latest.json --details --scanner opengrep`,
+  securelens scan results reports/splunk/securelens/main/abc123/latest.json --details --scanner opengrep
+
+  # Export all findings to CSV
+  securelens scan results reports/path/latest.json --details --output findings.csv
+
+  # Show all findings (no limit)
+  securelens scan results reports/path/latest.json --details --limit 0`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			listReports, _ := cmd.Flags().GetBool("list")
@@ -1672,7 +2008,7 @@ Examples:
 				return fmt.Errorf("report path required (or use --list to see available reports)")
 			}
 
-			return viewReport(args[0], format, showDetails, scanner)
+			return viewReport(args[0], format, showDetails, scanner, outputFile, limit)
 		},
 	}
 
@@ -1680,6 +2016,8 @@ Examples:
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
 	cmd.Flags().BoolVar(&showDetails, "details", false, "show detailed findings")
 	cmd.Flags().StringVar(&scanner, "scanner", "", "filter findings by scanner (opengrep, trivy, trufflehog)")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file for CSV export (e.g., findings.csv)")
+	cmd.Flags().IntVar(&limit, "limit", 0, "limit number of findings to display (0 = no limit, default: no limit)")
 	cmd.Flags().Bool("list", false, "list available reports")
 
 	return cmd
@@ -1732,17 +2070,187 @@ func listSavedReports(reportsDir string) error {
 	return nil
 }
 
-func viewReport(reportPath string, format string, showDetails bool, scannerFilter string) error {
+// parseReportFile parses a report file and handles multiple formats:
+// 1. ScanReport - combined report with all scanners
+// 2. StandaloneScanResult - raw output from a single scanner (opengrep-raw-*.json, etc.)
+// 3. Raw scanner output - direct output from opengrep/trivy/trufflehog
+func parseReportFile(data []byte, reportPath string) (*ScanReport, error) {
+	// Try to parse as StandaloneScanResult FIRST (raw scanner output wrapper)
+	// This format has: scanner, status, start_time, end_time, duration, results
+	// We check this first because ScanReport also has "status" field which causes false matches
+	var standaloneResult standalone.StandaloneScanResult
+	if err := json.Unmarshal(data, &standaloneResult); err == nil {
+		// StandaloneScanResult has "scanner" field which ScanReport doesn't have
+		if standaloneResult.Scanner != "" && standaloneResult.Results != nil {
+			// Convert StandaloneScanResult to ScanReport format
+			return &ScanReport{
+				Repository: "(raw scanner output)",
+				Status:     standaloneResult.Status,
+				Timestamp:  standaloneResult.StartTime.Format(time.RFC3339),
+				Scanners:   []string{standaloneResult.Scanner},
+				Results: map[string]interface{}{
+					standaloneResult.Scanner: standaloneResult.Results,
+				},
+			}, nil
+		}
+	}
+
+	// Try to parse as a ScanReport (combined report)
+	var report ScanReport
+	if err := json.Unmarshal(data, &report); err == nil {
+		// Check if it's a valid ScanReport (has scanners array or repository)
+		if report.Repository != "" || len(report.Scanners) > 0 {
+			return &report, nil
+		}
+	}
+
+	// Try to detect raw scanner output by filename and parse accordingly
+	filename := filepath.Base(reportPath)
+	scannerName := detectScannerFromFilename(filename)
+
+	switch scannerName {
+	case "opengrep":
+		// OpenGrep direct output has "results" array
+		var ogResults map[string]interface{}
+		if err := json.Unmarshal(data, &ogResults); err == nil {
+			if results, ok := ogResults["results"].([]interface{}); ok {
+				// Count by severity
+				severityCounts := make(map[string]int)
+				for _, r := range results {
+					if finding, ok := r.(map[string]interface{}); ok {
+						if extra, ok := finding["extra"].(map[string]interface{}); ok {
+							if sev, ok := extra["severity"].(string); ok {
+								severityCounts[sev]++
+							}
+						}
+					}
+				}
+				return &ScanReport{
+					Repository: "(raw opengrep output)",
+					Status:     "COMPLETE",
+					Scanners:   []string{"opengrep"},
+					Results: map[string]interface{}{
+						"opengrep": map[string]interface{}{
+							"status":         "COMPLETE",
+							"findings_count": len(results),
+							"findings":       results,
+							"by_severity":    severityCounts,
+						},
+					},
+				}, nil
+			}
+		}
+
+	case "trivy":
+		// Trivy output has "Results" array
+		var trivyResults map[string]interface{}
+		if err := json.Unmarshal(data, &trivyResults); err == nil {
+			vulnCount := 0
+			severityCounts := make(map[string]int)
+			if results, ok := trivyResults["Results"].([]interface{}); ok {
+				for _, r := range results {
+					if result, ok := r.(map[string]interface{}); ok {
+						if vulns, ok := result["Vulnerabilities"].([]interface{}); ok {
+							vulnCount += len(vulns)
+							for _, v := range vulns {
+								if vuln, ok := v.(map[string]interface{}); ok {
+									if sev, ok := vuln["Severity"].(string); ok {
+										severityCounts[sev]++
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			return &ScanReport{
+				Repository: "(raw trivy output)",
+				Status:     "COMPLETE",
+				Scanners:   []string{"trivy"},
+				Results: map[string]interface{}{
+					"trivy": map[string]interface{}{
+						"status":                "COMPLETE",
+						"vulnerabilities_count": vulnCount,
+						"by_severity":           severityCounts,
+						"results":               trivyResults["Results"],
+					},
+				},
+			}, nil
+		}
+
+	case "trufflehog":
+		// Trufflehog outputs NDJSON
+		var findings []map[string]interface{}
+		verifiedCount := 0
+		unverifiedCount := 0
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var finding map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &finding); err == nil {
+				if _, ok := finding["DetectorName"]; ok {
+					findings = append(findings, finding)
+					if verified, ok := finding["Verified"].(bool); ok && verified {
+						verifiedCount++
+					} else {
+						unverifiedCount++
+					}
+				}
+			}
+		}
+		return &ScanReport{
+			Repository: "(raw trufflehog output)",
+			Status:     "COMPLETE",
+			Scanners:   []string{"trufflehog"},
+			Results: map[string]interface{}{
+				"trufflehog": map[string]interface{}{
+					"status":             "COMPLETE",
+					"findings_count":     len(findings),
+					"verified_secrets":   verifiedCount,
+					"unverified_secrets": unverifiedCount,
+					"findings":           findings,
+				},
+			},
+		}, nil
+	}
+
+	// If we couldn't parse it, return an error
+	return nil, fmt.Errorf("unrecognized report format")
+}
+
+// detectScannerFromFilename extracts scanner name from filename
+func detectScannerFromFilename(filename string) string {
+	filename = strings.ToLower(filename)
+	if strings.Contains(filename, "trufflehog") {
+		return "trufflehog"
+	}
+	if strings.Contains(filename, "opengrep") || strings.Contains(filename, "semgrep") {
+		return "opengrep"
+	}
+	if strings.Contains(filename, "trivy") {
+		return "trivy"
+	}
+	return strings.TrimSuffix(filename, ".json")
+}
+
+func viewReport(reportPath string, format string, showDetails bool, scannerFilter string, outputFile string, limit int) error {
 	// Read the report file
 	data, err := os.ReadFile(reportPath)
 	if err != nil {
 		return fmt.Errorf("failed to read report: %w", err)
 	}
 
-	var report ScanReport
-	if err := json.Unmarshal(data, &report); err != nil {
+	// Try to parse and detect the report type
+	report, err := parseReportFile(data, reportPath)
+	if err != nil {
 		return fmt.Errorf("failed to parse report: %w", err)
 	}
+
+	// Check if CSV output is requested
+	isCSV := strings.HasSuffix(strings.ToLower(outputFile), ".csv")
 
 	switch format {
 	case "json":
@@ -1753,6 +2261,11 @@ func viewReport(reportPath string, format string, showDetails bool, scannerFilte
 		output, _ := yaml.Marshal(report)
 		fmt.Println(string(output))
 		return nil
+	}
+
+	// If CSV output requested, export findings
+	if isCSV && showDetails {
+		return exportFindingsToCSV(report, scannerFilter, outputFile, limit)
 	}
 
 	// Table format
@@ -1784,10 +2297,10 @@ func viewReport(reportPath string, format string, showDetails bool, scannerFilte
 			severityStr = extractSeveritySummary(result)
 		}
 
-		table.Append([]string{scanner, status, findings, severityStr})
+		_ = table.Append([]string{scanner, status, findings, severityStr})
 	}
 
-	table.Render()
+	_ = table.Render()
 
 	// Show detailed findings if requested
 	if showDetails {
@@ -1801,14 +2314,245 @@ func viewReport(reportPath string, format string, showDetails bool, scannerFilte
 				continue
 			}
 
-			printDetailedFindings(scanner, result)
+			printDetailedFindings(scanner, result, limit)
 		}
 	}
 
 	return nil
 }
 
-func printDetailedFindings(scanner string, result map[string]interface{}) {
+// exportFindingsToCSV exports all findings to a CSV file
+func exportFindingsToCSV(report *ScanReport, scannerFilter string, outputFile string, limit int) error {
+	file, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create CSV file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	// Write UTF-8 BOM for Excel compatibility
+	_, _ = file.WriteString("\xEF\xBB\xBF")
+
+	// Track total rows written
+	totalRows := 0
+
+	for _, scanner := range report.Scanners {
+		if scannerFilter != "" && scanner != scannerFilter {
+			continue
+		}
+		result, ok := report.Results[scanner].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		switch scanner {
+		case "opengrep":
+			rows, err := exportOpengrepToCSV(file, result, limit, totalRows == 0)
+			if err != nil {
+				return err
+			}
+			totalRows += rows
+
+		case "trivy":
+			rows, err := exportTrivyToCSV(file, result, limit, totalRows == 0)
+			if err != nil {
+				return err
+			}
+			totalRows += rows
+
+		case "trufflehog":
+			rows, err := exportTrufflehogToCSV(file, result, limit, totalRows == 0)
+			if err != nil {
+				return err
+			}
+			totalRows += rows
+		}
+	}
+
+	fmt.Printf("Exported %d findings to %s\n", totalRows, outputFile)
+	return nil
+}
+
+// escapeCSV escapes a string for CSV output
+func escapeCSV(s string) string {
+	// Replace newlines with space
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	// If contains comma, quote, or space, wrap in quotes and escape internal quotes
+	if strings.ContainsAny(s, ",\"\t") {
+		s = "\"" + strings.ReplaceAll(s, "\"", "\"\"") + "\""
+	}
+	return s
+}
+
+func exportOpengrepToCSV(file *os.File, result map[string]interface{}, limit int, writeHeader bool) (int, error) {
+	findings, ok := result["findings"].([]interface{})
+	if !ok || len(findings) == 0 {
+		return 0, nil
+	}
+
+	if writeHeader {
+		_, _ = file.WriteString("Scanner,Severity,Category,Rule ID,File,Line,Message\n")
+	}
+
+	count := 0
+	for _, f := range findings {
+		if limit > 0 && count >= limit {
+			break
+		}
+		finding, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		severity := "-"
+		message := "-"
+		checkID := "-"
+		category := "-"
+		path := "-"
+		line := "-"
+
+		if extra, ok := finding["extra"].(map[string]interface{}); ok {
+			if s, ok := extra["severity"].(string); ok {
+				severity = s
+			}
+			if m, ok := extra["message"].(string); ok {
+				message = m
+			}
+			if metadata, ok := extra["metadata"].(map[string]interface{}); ok {
+				if cat, ok := metadata["category"].(string); ok {
+					category = cat
+				}
+			}
+		}
+		if c, ok := finding["check_id"].(string); ok {
+			checkID = cleanCheckID(c)
+		}
+		if p, ok := finding["path"].(string); ok {
+			path = cleanPath(p)
+		}
+		if start, ok := finding["start"].(map[string]interface{}); ok {
+			if l, ok := start["line"].(float64); ok {
+				line = fmt.Sprintf("%d", int(l))
+			}
+		}
+
+		_, _ = fmt.Fprintf(file, "opengrep,%s,%s,%s,%s,%s,%s\n",
+			escapeCSV(severity), escapeCSV(category), escapeCSV(checkID),
+			escapeCSV(path), escapeCSV(line), escapeCSV(message))
+		count++
+	}
+
+	return count, nil
+}
+
+func exportTrivyToCSV(file *os.File, result map[string]interface{}, limit int, writeHeader bool) (int, error) {
+	results, ok := result["results"].([]interface{})
+	if !ok || len(results) == 0 {
+		return 0, nil
+	}
+
+	if writeHeader {
+		_, _ = file.WriteString("Scanner,Severity,CVE,Package,File,Installed Version,Fixed Version,Title\n")
+	}
+
+	count := 0
+	for _, r := range results {
+		res, ok := r.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		target := getString(res, "Target")
+		vulns, ok := res["Vulnerabilities"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, v := range vulns {
+			if limit > 0 && count >= limit {
+				break
+			}
+			vuln, ok := v.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			_, _ = fmt.Fprintf(file, "trivy,%s,%s,%s,%s,%s,%s,%s\n",
+				escapeCSV(getString(vuln, "Severity")),
+				escapeCSV(getString(vuln, "VulnerabilityID")),
+				escapeCSV(getString(vuln, "PkgName")),
+				escapeCSV(cleanPath(target)),
+				escapeCSV(getString(vuln, "InstalledVersion")),
+				escapeCSV(getString(vuln, "FixedVersion")),
+				escapeCSV(getString(vuln, "Title")))
+			count++
+		}
+		if limit > 0 && count >= limit {
+			break
+		}
+	}
+
+	return count, nil
+}
+
+func exportTrufflehogToCSV(file *os.File, result map[string]interface{}, limit int, writeHeader bool) (int, error) {
+	findings, ok := result["findings"].([]interface{})
+	if !ok || len(findings) == 0 {
+		return 0, nil
+	}
+
+	if writeHeader {
+		_, _ = file.WriteString("Scanner,Verified,Detector,File,Line,Redacted\n")
+	}
+
+	count := 0
+	for _, f := range findings {
+		if limit > 0 && count >= limit {
+			break
+		}
+		finding, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		verified := "No"
+		if v, ok := finding["Verified"].(bool); ok && v {
+			verified = "Yes"
+		}
+		detector := getString(finding, "DetectorName")
+		filePath := "-"
+		line := "-"
+		redacted := getString(finding, "Redacted")
+
+		if sm, ok := finding["SourceMetadata"].(map[string]interface{}); ok {
+			if data, ok := sm["Data"].(map[string]interface{}); ok {
+				if git, ok := data["Git"].(map[string]interface{}); ok {
+					if fp, ok := git["file"].(string); ok && fp != "" {
+						filePath = fp
+					}
+					if l, ok := git["line"].(float64); ok && l > 0 {
+						line = fmt.Sprintf("%d", int(l))
+					}
+				}
+				if fs, ok := data["Filesystem"].(map[string]interface{}); ok {
+					if fp, ok := fs["file"].(string); ok && fp != "" {
+						filePath = fp
+					}
+					if l, ok := fs["line"].(float64); ok && l > 0 {
+						line = fmt.Sprintf("%d", int(l))
+					}
+				}
+			}
+		}
+
+		_, _ = fmt.Fprintf(file, "trufflehog,%s,%s,%s,%s,%s\n",
+			escapeCSV(verified), escapeCSV(detector), escapeCSV(filePath),
+			escapeCSV(line), escapeCSV(redacted))
+		count++
+	}
+
+	return count, nil
+}
+
+func printDetailedFindings(scanner string, result map[string]interface{}, limit int) {
 	fmt.Printf("\n=== %s Findings ===\n\n", strings.ToUpper(scanner))
 
 	findings, hasFindings := result["findings"].([]interface{})
@@ -1817,17 +2561,17 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 		return
 	}
 
-	// Limit to first 20 findings
+	// Apply limit if specified (0 = no limit, show all)
 	displayCount := len(findings)
-	if displayCount > 20 {
-		displayCount = 20
+	if limit > 0 && displayCount > limit {
+		displayCount = limit
 	}
 
 	table := tablewriter.NewWriter(os.Stdout)
 
 	switch scanner {
 	case "opengrep":
-		table.Header([]string{"#", "Severity", "Rule", "File", "Line", "Message"})
+		table.Header([]string{"#", "Severity", "Category", "Rule ID", "File", "Line", "Message"})
 		for i, f := range findings[:displayCount] {
 			finding, ok := f.(map[string]interface{})
 			if !ok {
@@ -1836,6 +2580,7 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 			severity := "-"
 			message := "-"
 			checkID := "-"
+			category := "-"
 			path := "-"
 			line := "-"
 
@@ -1844,25 +2589,33 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 					severity = s
 				}
 				if m, ok := extra["message"].(string); ok {
-					message = truncate(m, 50)
+					message = truncate(m, 40)
+				}
+				// Extract category from metadata
+				if metadata, ok := extra["metadata"].(map[string]interface{}); ok {
+					if cat, ok := metadata["category"].(string); ok {
+						category = truncate(cat, 15)
+					}
 				}
 			}
 			if c, ok := finding["check_id"].(string); ok {
-				checkID = truncate(c, 30)
+				// Clean up check_id - extract just the rule name
+				checkID = cleanCheckID(c)
 			}
 			if p, ok := finding["path"].(string); ok {
-				path = truncate(filepath.Base(p), 25)
+				// Clean up path - remove temp directory prefix
+				path = cleanPath(p)
 			}
 			if start, ok := finding["start"].(map[string]interface{}); ok {
 				if l, ok := start["line"].(float64); ok {
 					line = fmt.Sprintf("%d", int(l))
 				}
 			}
-			table.Append([]string{fmt.Sprintf("%d", i+1), severity, checkID, path, line, message})
+			_ = table.Append([]string{fmt.Sprintf("%d", i+1), severity, category, truncate(checkID, 25), truncate(path, 30), line, message})
 		}
 
 	case "trivy":
-		table.Header([]string{"#", "Severity", "CVE", "Package", "Version", "Fixed"})
+		table.Header([]string{"#", "Severity", "CVE", "Package", "File", "Version", "Fixed"})
 		if results, ok := result["results"].([]interface{}); ok {
 			count := 0
 			for _, r := range results {
@@ -1870,12 +2623,14 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 				if !ok {
 					continue
 				}
+				target := getString(res, "Target")
 				vulns, ok := res["Vulnerabilities"].([]interface{})
 				if !ok {
 					continue
 				}
 				for _, v := range vulns {
-					if count >= displayCount {
+					// Apply limit if specified (0 = no limit)
+					if limit > 0 && count >= limit {
 						break
 					}
 					vuln, ok := v.(map[string]interface{})
@@ -1883,20 +2638,25 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 						continue
 					}
 					count++
-					table.Append([]string{
+					_ = table.Append([]string{
 						fmt.Sprintf("%d", count),
 						getString(vuln, "Severity"),
 						truncate(getString(vuln, "VulnerabilityID"), 20),
 						truncate(getString(vuln, "PkgName"), 20),
+						truncate(cleanPath(target), 25),
 						truncate(getString(vuln, "InstalledVersion"), 15),
 						truncate(getString(vuln, "FixedVersion"), 15),
 					})
+				}
+				// Break outer loop too if limit reached
+				if limit > 0 && count >= limit {
+					break
 				}
 			}
 		}
 
 	case "trufflehog":
-		table.Header([]string{"#", "Verified", "Detector", "File", "Line"})
+		table.Header([]string{"#", "Verified", "Detector", "File", "Line", "Redacted"})
 		for i, f := range findings[:displayCount] {
 			finding, ok := f.(map[string]interface{})
 			if !ok {
@@ -1904,32 +2664,45 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 			}
 			verified := "No"
 			if v, ok := finding["Verified"].(bool); ok && v {
-				verified = "Yes"
+				verified = "YES"
 			}
 			detector := getString(finding, "DetectorName")
 			file := "-"
 			line := "-"
+			redacted := truncate(getString(finding, "Redacted"), 30)
 
 			if sm, ok := finding["SourceMetadata"].(map[string]interface{}); ok {
 				if data, ok := sm["Data"].(map[string]interface{}); ok {
+					// Try Git source first
 					if git, ok := data["Git"].(map[string]interface{}); ok {
-						if f, ok := git["file"].(string); ok {
-							file = truncate(filepath.Base(f), 30)
+						if f, ok := git["file"].(string); ok && f != "" {
+							file = truncate(f, 40)
 						}
-						if l, ok := git["line"].(float64); ok {
+						if l, ok := git["line"].(float64); ok && l > 0 {
+							line = fmt.Sprintf("%d", int(l))
+						}
+					}
+					// Try Filesystem source (used in standalone mode with --local-path)
+					if fs, ok := data["Filesystem"].(map[string]interface{}); ok {
+						if f, ok := fs["file"].(string); ok && f != "" {
+							file = truncate(f, 40)
+						}
+						if l, ok := fs["line"].(float64); ok && l > 0 {
 							line = fmt.Sprintf("%d", int(l))
 						}
 					}
 				}
 			}
-			table.Append([]string{fmt.Sprintf("%d", i+1), verified, detector, file, line})
+			_ = table.Append([]string{fmt.Sprintf("%d", i+1), verified, detector, file, line, redacted})
 		}
 	}
 
-	table.Render()
+	_ = table.Render()
 
-	if len(findings) > displayCount {
-		fmt.Printf("\n... and %d more findings (showing first %d)\n", len(findings)-displayCount, displayCount)
+	if limit > 0 && len(findings) > displayCount {
+		fmt.Printf("\n... and %d more findings (showing first %d, use --limit 0 for all)\n", len(findings)-displayCount, displayCount)
+	} else {
+		fmt.Printf("\nTotal: %d findings\n", len(findings))
 	}
 }
 
@@ -1945,4 +2718,51 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// cleanCheckID extracts a clean rule ID from the full check_id path
+// e.g., "assets.opengrep-rules.python.flask.security.injection" -> "python.flask.security.injection"
+func cleanCheckID(checkID string) string {
+	// Remove common prefixes like "assets.opengrep-rules." or similar
+	prefixes := []string{
+		"assets.opengrep-rules.",
+		"opengrep-rules.",
+		"semgrep-rules.",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(checkID, prefix) {
+			checkID = strings.TrimPrefix(checkID, prefix)
+			break
+		}
+	}
+	return checkID
+}
+
+// cleanPath removes temp directory prefixes from file paths
+// e.g., "/var/folders/.../securelens-scan-xxx/make_lib/script.py" -> "make_lib/script.py"
+func cleanPath(path string) string {
+	// Look for common temp directory patterns and extract the relative path
+	markers := []string{
+		"/securelens-",      // securelens temp dirs
+		"/tmp/",             // general tmp
+		"/var/folders/",     // macOS temp
+		"\\Temp\\",          // Windows temp
+	}
+
+	for _, marker := range markers {
+		if idx := strings.Index(path, marker); idx >= 0 {
+			// Find the end of the temp dir name (next path separator after marker)
+			remaining := path[idx+len(marker):]
+			if sepIdx := strings.IndexAny(remaining, "/\\"); sepIdx >= 0 {
+				// Return everything after the temp directory
+				return remaining[sepIdx+1:]
+			}
+		}
+	}
+
+	// If no temp dir found, just return the path as-is or basename for very long paths
+	if len(path) > 60 {
+		return "..." + path[len(path)-57:]
+	}
+	return path
 }
