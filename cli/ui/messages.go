@@ -10,6 +10,7 @@ type ViewType int
 const (
 	ViewHome ViewType = iota
 	ViewRepos
+	ViewBranchSelect // Branch selection before scanning
 	ViewScan
 	ViewResults
 	ViewWizard
@@ -27,7 +28,7 @@ const (
 )
 
 func (v ViewType) String() string {
-	return [...]string{"Home", "Repositories", "Scanning", "Results", "Setup"}[v]
+	return [...]string{"Home", "Repositories", "Branch Select", "Scanning", "Results", "Setup"}[v]
 }
 
 // Custom messages for the TUI
@@ -128,4 +129,17 @@ type ReportBrowserLoadedMsg struct {
 type ReportDetailLoadedMsg struct {
 	Report *scan.ScanReport
 	Path   string
+}
+
+// BranchesLoadedMsg is sent when branches are loaded for a repository
+type BranchesLoadedMsg struct {
+	Repo     scan.DiscoveredRepository
+	Branches []string
+	Error    error
+}
+
+// ScanItem represents a single scan job (repo + branch combination)
+type ScanItem struct {
+	Repo   scan.DiscoveredRepository
+	Branch string
 }

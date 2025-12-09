@@ -353,19 +353,25 @@ type ScanReport struct {
 
 // ScanRepository runs a scan on a discovered repository (exported for UI use)
 func ScanRepository(ctx context.Context, cfg *config.Config, repo DiscoveredRepository, scanMode string) (*ScanReport, error) {
+	return ScanRepositoryWithBranch(ctx, cfg, repo, "main", scanMode)
+}
+
+// ScanRepositoryWithBranch runs a scan on a discovered repository with specific branch (exported for UI use)
+func ScanRepositoryWithBranch(ctx context.Context, cfg *config.Config, repo DiscoveredRepository, branch string, scanMode string) (*ScanReport, error) {
 	// Build repo URL info
 	repoInfo := &repository.RepoURLInfo{
 		URL:      repo.URL,
 		Owner:    strings.Split(repo.FullName, "/")[0],
 		Repo:     repo.Name,
 		Provider: mapProviderToRepoProvider(repo.Provider),
+		Branch:   branch,
 	}
 
 	// Default scanners
 	scanners := []string{"opengrep", "trivy", "trufflehog"}
 
 	opts := &RepoScanOptions{
-		Branch:       "main", // Use default branch
+		Branch:       branch,
 		Scanners:     scanners,
 		Parallel:     true,
 		AssetsDir:    "assets",
@@ -389,6 +395,60 @@ func ScanRepository(ctx context.Context, cfg *config.Config, repo DiscoveredRepo
 		return executeRemoteScan(ctx, cfg, repoInfo, scanners, opts)
 	}
 	return executeStandaloneScan(ctx, cfg, repoInfo, scanners, opts)
+}
+
+// FetchBranches retrieves branches for a discovered repository (exported for UI use)
+func FetchBranches(ctx context.Context, cfg *config.Config, repo DiscoveredRepository) ([]string, error) {
+	parts := strings.Split(repo.FullName, "/")
+	if len(parts) < 2 {
+		return []string{"main"}, nil
+	}
+	owner := parts[0]
+	repoName := parts[1]
+
+	switch repo.Provider {
+	case "github":
+		for _, gh := range cfg.Git.GitHub {
+			client, err := github.NewClient(gh.Token, gh.APIURL)
+			if err != nil {
+				continue
+			}
+			branches, err := client.ListBranches(ctx, owner, repoName)
+			if err == nil {
+				return branches, nil
+			}
+		}
+	case "gitlab":
+		for _, gl := range cfg.Git.GitLab {
+			client, err := gitlab.NewClient(gl.Token, gl.APIURL)
+			if err != nil {
+				continue
+			}
+			// For GitLab, we need the project ID or path
+			project, err := client.GetProject(ctx, repo.FullName)
+			if err != nil {
+				continue
+			}
+			branches, err := client.ListBranches(ctx, project.ID)
+			if err == nil {
+				return branches, nil
+			}
+		}
+	case "bitbucket":
+		for _, bb := range cfg.Git.Bitbucket {
+			client, err := bitbucket.NewClient(bb.Username, bb.AppPassword, bb.APIURL)
+			if err != nil {
+				continue
+			}
+			branches, err := client.ListBranches(ctx, owner, repoName)
+			if err == nil {
+				return branches, nil
+			}
+		}
+	}
+
+	// Default to main if we can't fetch branches
+	return []string{"main"}, nil
 }
 
 // mapProviderToRepoProvider converts string provider to repository.GitProvider

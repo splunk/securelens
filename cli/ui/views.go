@@ -525,7 +525,7 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadRepos()
 		}
 	case key.Matches(msg, m.keys.Enter):
-		// Start scan with selected repos
+		// Get selected repo(s) and go to branch selection
 		var toScan []scan.DiscoveredRepository
 		for i, selected := range m.selected {
 			if selected && i < len(filteredRepos) {
@@ -536,10 +536,173 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			toScan = append(toScan, filteredRepos[m.repoListIndex])
 		}
 		if len(toScan) > 0 {
-			m.view = ViewScan
-			return m, func() tea.Msg {
-				return ScanStartMsg{Repos: toScan}
+			// For now, handle one repo at a time for branch selection
+			// TODO: Support bulk branch selection for multiple repos
+			repo := toScan[0]
+			m.loading = true
+			m.statusMsg = "Loading branches for " + repo.FullName + "..."
+			return m, m.loadBranches(repo)
+		}
+	}
+
+	return m, nil
+}
+
+// ============================================================================
+// Branch Selection View
+// ============================================================================
+
+func (m Model) viewBranchSelect() string {
+	var b strings.Builder
+
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Select Branches to Scan"))
+	b.WriteString("\n\n")
+
+	// Show repo info
+	b.WriteString(fmt.Sprintf("Repository: %s\n", m.branchSelectRepo.FullName))
+	b.WriteString(fmt.Sprintf("Provider:   %s\n", m.branchSelectRepo.Provider))
+	b.WriteString("\n")
+
+	if m.loading {
+		b.WriteString(m.spinner.View() + " Loading branches...")
+		return b.String()
+	}
+
+	if len(m.branchSelectBranches) == 0 {
+		b.WriteString(SubtleStyle.Render("No branches found. Using default branch."))
+		b.WriteString("\n\n")
+		b.WriteString(HelpStyle.Render("Press enter to scan main branch • esc to go back"))
+		return b.String()
+	}
+
+	// Show selected count
+	selectedCount := 0
+	for _, selected := range m.branchSelected {
+		if selected {
+			selectedCount++
+		}
+	}
+	b.WriteString(fmt.Sprintf("Select branches to scan (%d selected):\n\n", selectedCount))
+
+	// Calculate visible window (show 15 branches at a time)
+	pageSize := 15
+	startIdx := 0
+	if m.branchSelectIndex >= pageSize {
+		startIdx = m.branchSelectIndex - pageSize + 1
+	}
+	endIdx := startIdx + pageSize
+	if endIdx > len(m.branchSelectBranches) {
+		endIdx = len(m.branchSelectBranches)
+	}
+
+	// Show scroll indicator if there are items above
+	if startIdx > 0 {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↑ %d more above\n", startIdx)))
+	}
+
+	// Show branch list
+	for i := startIdx; i < endIdx; i++ {
+		branch := m.branchSelectBranches[i]
+		prefix := "  "
+		if i == m.branchSelectIndex {
+			prefix = "> "
+		}
+
+		// Selection indicator
+		selected := ""
+		if m.branchSelected[i] {
+			selected = SuccessStyle.Render("[✓] ")
+		} else {
+			selected = "[ ] "
+		}
+
+		// Highlight common branches
+		branchDisplay := branch
+		if branch == "main" || branch == "master" {
+			branchDisplay = lipgloss.NewStyle().Bold(true).Render(branch) + SubtleStyle.Render(" (default)")
+		}
+
+		line := fmt.Sprintf("%s%s%s", prefix, selected, branchDisplay)
+		if i == m.branchSelectIndex {
+			line = SelectedStyle.Render(line)
+		}
+		b.WriteString(line + "\n")
+	}
+
+	// Show scroll indicator if there are items below
+	if endIdx < len(m.branchSelectBranches) {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↓ %d more below\n", len(m.branchSelectBranches)-endIdx)))
+	}
+
+	// Footer hints
+	b.WriteString("\n")
+	b.WriteString(HelpStyle.Render("space: toggle • a: select all • n: select none • enter: start scan • esc: back"))
+
+	return b.String()
+}
+
+func (m Model) updateBranchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Escape):
+		m.view = ViewRepos
+		return m, nil
+
+	case key.Matches(msg, m.keys.Up):
+		if m.branchSelectIndex > 0 {
+			m.branchSelectIndex--
+		}
+
+	case key.Matches(msg, m.keys.Down):
+		if m.branchSelectIndex < len(m.branchSelectBranches)-1 {
+			m.branchSelectIndex++
+		}
+
+	case key.Matches(msg, m.keys.Space):
+		m.branchSelected[m.branchSelectIndex] = !m.branchSelected[m.branchSelectIndex]
+
+	case key.Matches(msg, m.keys.SelectAll):
+		for i := range m.branchSelectBranches {
+			m.branchSelected[i] = true
+		}
+
+	case key.Matches(msg, m.keys.SelectNone):
+		m.branchSelected = make(map[int]bool)
+
+	case key.Matches(msg, m.keys.Enter):
+		// Build scan queue from selected branches
+		var selectedBranches []string
+		for i, selected := range m.branchSelected {
+			if selected && i < len(m.branchSelectBranches) {
+				selectedBranches = append(selectedBranches, m.branchSelectBranches[i])
 			}
+		}
+		// If nothing selected, use the highlighted branch
+		if len(selectedBranches) == 0 {
+			if m.branchSelectIndex < len(m.branchSelectBranches) {
+				selectedBranches = append(selectedBranches, m.branchSelectBranches[m.branchSelectIndex])
+			} else {
+				selectedBranches = append(selectedBranches, "main")
+			}
+		}
+
+		// Build scan queue
+		m.scanQueue = nil
+		for _, branch := range selectedBranches {
+			m.scanQueue = append(m.scanQueue, ScanItem{
+				Repo:   m.branchSelectRepo,
+				Branch: branch,
+			})
+		}
+
+		// Start scanning the first item
+		if len(m.scanQueue) > 0 {
+			item := m.scanQueue[0]
+			m.scanQueue = m.scanQueue[1:] // Remove from queue
+			m.view = ViewScan
+			m.loading = true
+			m.statusMsg = fmt.Sprintf("Scanning %s @ %s...", item.Repo.FullName, item.Branch)
+			return m, m.runScanWithBranch(item.Repo, item.Branch)
 		}
 	}
 

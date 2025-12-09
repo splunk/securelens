@@ -420,11 +420,22 @@ func countBySeverity(findings []srs.SemgrepFinding) map[string]int {
 func runTrivy(ctx context.Context, repoPath string) (map[string]interface{}, error) {
 	slog.Info("Running trivy scan", "repo_path", repoPath)
 
-	cmd := exec.CommandContext(ctx, "trivy", "fs",
+	// Build trivy command with exclusions for non-relevant directories
+	args := []string{
+		"fs",
 		repoPath,
 		"--format", "json",
 		"--scanners", "vuln,secret,misconfig",
-	)
+	}
+
+	// Add exclusions for directories that shouldn't be scanned
+	// (reference examples, assets, vendor, etc.)
+	excludeDirs := []string{"assets", "references", "vendor", "node_modules", "docs", ".git"}
+	for _, dir := range excludeDirs {
+		args = append(args, "--skip-dirs", dir)
+	}
+
+	cmd := exec.CommandContext(ctx, "trivy", args...)
 
 	output, err := cmd.Output()
 	if err != nil {
