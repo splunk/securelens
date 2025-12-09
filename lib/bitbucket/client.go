@@ -112,11 +112,7 @@ func (c *Client) ListRepositories(ctx context.Context, workspace string, limit i
 	apiURL := c.buildRepositoriesURL(workspace)
 	page := 1
 
-	for {
-		if limit > 0 && len(allRepos) >= limit {
-			break
-		}
-
+	for limit <= 0 || len(allRepos) < limit {
 		remaining := limit - len(allRepos)
 		repos, hasMore, err := c.fetchRepositoriesPage(ctx, apiURL, page, remaining)
 		if err != nil {
@@ -194,6 +190,7 @@ func (c *Client) parseCloudResponse(body []byte, page int, remaining int) ([]Rep
 	repos := response.Values
 	if remaining > 0 && len(repos) > remaining {
 		repos = repos[:remaining]
+		return repos, response.Next != "", nil
 	}
 
 	slog.Info("Fetched Bitbucket Cloud repositories page", "page", page, "count", len(response.Values))
@@ -250,7 +247,7 @@ func (c *Client) makeAuthenticatedRequest(ctx context.Context, url string) ([]by
 		slog.Error("Failed to fetch from Bitbucket", "error", err)
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

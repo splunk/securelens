@@ -7,6 +7,7 @@ import (
 	"github.com/splunk/securelens/cli/config"
 	"github.com/splunk/securelens/cli/query"
 	"github.com/splunk/securelens/cli/scan"
+	"github.com/splunk/securelens/cli/ui"
 )
 
 var (
@@ -47,4 +48,5 @@ func init() {
 	rootCmd.AddCommand(scan.NewScanCmd())
 	rootCmd.AddCommand(query.NewQueryCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
+	rootCmd.AddCommand(ui.NewUICmd())
 }

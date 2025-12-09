@@ -91,6 +91,11 @@ func discoverRepositories(ctx context.Context, cfg *config.Config, limit int, in
 	return allRepos, nil
 }
 
+// DiscoverRepositories is the exported version for use by other packages (like UI)
+func DiscoverRepositories(ctx context.Context, cfg *config.Config, limit int, includeBranches bool) ([]DiscoveredRepository, error) {
+	return discoverRepositories(ctx, cfg, limit, includeBranches)
+}
+
 func setBranches(ctx context.Context, includeBranches bool, fetchBranches func() ([]string, error)) []string {
 	if !includeBranches {
 		return nil
@@ -257,6 +262,32 @@ func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig
 	return repos, nil
 }
 
+// filterConfigByProvider creates a filtered config with only the specified provider
+func filterConfigByProvider(cfg *config.Config, provider string) *config.Config {
+	filtered := &config.Config{
+		Database:  cfg.Database,
+		SRS:       cfg.SRS,
+		Scanners:  cfg.Scanners,
+		Scanning:  cfg.Scanning,
+		Output:    cfg.Output,
+		Discovery: cfg.Discovery,
+	}
+
+	switch strings.ToLower(provider) {
+	case "github":
+		filtered.Git.GitHub = cfg.Git.GitHub
+	case "gitlab":
+		filtered.Git.GitLab = cfg.Git.GitLab
+	case "bitbucket":
+		filtered.Git.Bitbucket = cfg.Git.Bitbucket
+	default:
+		slog.Warn("Unknown provider, returning full config", "provider", provider)
+		return cfg
+	}
+
+	return filtered
+}
+
 // NewScanCmd creates the scan command
 func NewScanCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -305,6 +336,7 @@ type RepoScanOptions struct {
 	PollInterval int      // Seconds between status polls
 	MaxWait      int      // Maximum minutes to wait for results
 	AssetsDir    string   // Directory for scanner assets (rules, etc.)
+	LocalPath    string   // Local directory to scan instead of cloning (standalone mode)
 }
 
 // ScanReport represents the scan results
@@ -317,6 +349,60 @@ type ScanReport struct {
 	Scanners   []string               `json:"scanners"`
 	Results    map[string]interface{} `json:"results,omitempty"`
 	Error      string                 `json:"error,omitempty"`
+}
+
+// ScanRepository runs a scan on a discovered repository (exported for UI use)
+func ScanRepository(ctx context.Context, cfg *config.Config, repo DiscoveredRepository, scanMode string) (*ScanReport, error) {
+	// Build repo URL info
+	repoInfo := &repository.RepoURLInfo{
+		URL:      repo.URL,
+		Owner:    strings.Split(repo.FullName, "/")[0],
+		Repo:     repo.Name,
+		Provider: mapProviderToRepoProvider(repo.Provider),
+	}
+
+	// Default scanners
+	scanners := []string{"opengrep", "trivy", "trufflehog"}
+
+	opts := &RepoScanOptions{
+		Branch:       "main", // Use default branch
+		Scanners:     scanners,
+		Parallel:     true,
+		AssetsDir:    "assets",
+		PollInterval: 10,
+		MaxWait:      30,
+	}
+
+	// Auto-detect mode if not specified
+	if scanMode == "" {
+		scanMode = "standalone"
+		if srsURL := os.Getenv("SRS_ORCHESTRATOR_API_ENDPOINT"); srsURL != "" {
+			scanMode = "remote"
+			opts.SRSURL = srsURL
+		} else if cfg != nil && cfg.SRS.APIURL != "" {
+			scanMode = "remote"
+			opts.SRSURL = cfg.SRS.APIURL
+		}
+	}
+
+	if scanMode == "remote" {
+		return executeRemoteScan(ctx, cfg, repoInfo, scanners, opts)
+	}
+	return executeStandaloneScan(ctx, cfg, repoInfo, scanners, opts)
+}
+
+// mapProviderToRepoProvider converts string provider to repository.GitProvider
+func mapProviderToRepoProvider(provider string) repository.GitProvider {
+	switch strings.ToLower(provider) {
+	case "github":
+		return repository.GitHub
+	case "gitlab":
+		return repository.GitLab
+	case "bitbucket":
+		return repository.Bitbucket
+	default:
+		return repository.Unknown
+	}
 }
 
 func newRepoCmd() *cobra.Command {
@@ -334,6 +420,10 @@ URL Formats (positional argument or --url flag):
 
 Alternatively, use explicit flags:
   --url https://github.com/org/repo --branch develop --commit abc123
+
+Local Path Mode (standalone only):
+  --local-path ./        : Scan a local directory instead of cloning
+                           Useful in CI/CD where code is already checked out
 
 Scan Modes:
   --mode local           : Clone locally and run built-in scanners (default)
@@ -377,6 +467,10 @@ Examples:
   securelens scan repo https://github.com/myorg/myrepo --mode standalone
   securelens scan repo https://github.com/myorg/myrepo --mode standalone --scanners opengrep --scanners trivy
 
+  # Scan a local directory (CI/CD mode - no cloning needed)
+  securelens scan repo --local-path . --mode standalone --debug
+  securelens scan repo --local-path /path/to/repo --mode standalone --branch main --commit abc123
+
   # Output raw results to file
   securelens scan repo https://github.com/myorg/myrepo --output results.json
 
@@ -397,8 +491,18 @@ Examples:
 				opts.URL = args[0]
 			}
 
-			if opts.URL == "" {
-				return fmt.Errorf("repository URL is required (provide as argument or --url flag)")
+			// If local-path is provided, URL is optional
+			if opts.LocalPath != "" {
+				// Validate local path exists
+				if _, err := os.Stat(opts.LocalPath); os.IsNotExist(err) {
+					return fmt.Errorf("local path does not exist: %s", opts.LocalPath)
+				}
+				// local-path only works with standalone mode
+				if opts.Mode != ScanModeStandalone {
+					return fmt.Errorf("--local-path only works with --mode standalone")
+				}
+			} else if opts.URL == "" {
+				return fmt.Errorf("repository URL is required (provide as argument, --url flag, or use --local-path for local directories)")
 			}
 
 			return runRepoScan(cmd.Context(), &opts)
@@ -409,6 +513,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.URL, "url", "", "repository URL (alternative to positional argument)")
 	cmd.Flags().StringVarP(&opts.Branch, "branch", "b", "", "branch to scan (overrides URL-embedded branch)")
 	cmd.Flags().StringVar(&opts.Commit, "commit", "", "specific commit to scan (overrides URL-embedded commit)")
+	cmd.Flags().StringVar(&opts.LocalPath, "local-path", "", "local directory to scan instead of cloning (standalone mode only, useful for CI/CD)")
 
 	// Scanner selection flags
 	cmd.Flags().StringSliceVar(&opts.Scanners, "scanners", []string{}, "scanners to run (fossa, semgrep, trufflehog); default: all")
@@ -493,6 +598,7 @@ func runRepoScan(ctx context.Context, opts *RepoScanOptions) error {
 		"commit", opts.Commit,
 		"scanners", opts.Scanners,
 		"mode", opts.Mode,
+		"local_path", opts.LocalPath,
 	)
 
 	// Load configuration
@@ -502,19 +608,29 @@ func runRepoScan(ctx context.Context, opts *RepoScanOptions) error {
 		cfg = &config.Config{}
 	}
 
-	// Parse repository URL
-	repoInfo, err := parseRepoInput(opts)
-	if err != nil {
-		return fmt.Errorf("failed to parse repository URL: %w", err)
+	// Parse repository URL (or create minimal info for local-path mode)
+	var repoInfo *repository.RepoURLInfo
+	if opts.LocalPath != "" && opts.URL == "" {
+		// Local path mode without URL - create minimal repo info
+		repoInfo = &repository.RepoURLInfo{
+			Branch: opts.Branch,
+			Commit: opts.Commit,
+		}
+		slog.Info("Using local path mode", "path", opts.LocalPath, "branch", opts.Branch, "commit", opts.Commit)
+	} else {
+		// Parse repository URL
+		repoInfo, err = parseRepoInput(opts)
+		if err != nil {
+			return fmt.Errorf("failed to parse repository URL: %w", err)
+		}
+		slog.Info("Parsed repository info",
+			"provider", repoInfo.Provider,
+			"owner", repoInfo.Owner,
+			"repo", repoInfo.Repo,
+			"branch", repoInfo.Branch,
+			"commit", repoInfo.Commit,
+		)
 	}
-
-	slog.Info("Parsed repository info",
-		"provider", repoInfo.Provider,
-		"owner", repoInfo.Owner,
-		"repo", repoInfo.Repo,
-		"branch", repoInfo.Branch,
-		"commit", repoInfo.Commit,
-	)
 
 	// Determine scanners to run based on mode
 	scanners := opts.Scanners
@@ -531,7 +647,12 @@ func runRepoScan(ctx context.Context, opts *RepoScanOptions) error {
 
 	if opts.DryRun {
 		fmt.Printf("Dry run - would scan:\n")
-		fmt.Printf("  Repository: %s\n", repoInfo.URL)
+		if opts.LocalPath != "" {
+			fmt.Printf("  Local Path: %s\n", opts.LocalPath)
+		}
+		if repoInfo.URL != "" {
+			fmt.Printf("  Repository: %s\n", repoInfo.URL)
+		}
 		fmt.Printf("  Branch:     %s\n", repoInfo.Branch)
 		fmt.Printf("  Commit:     %s\n", repoInfo.Commit)
 		fmt.Printf("  Scanners:   %v\n", scanners)
@@ -613,7 +734,7 @@ func executeLocalScan(ctx context.Context, cfg *config.Config, repoInfo *reposit
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
-	defer cloneManager.Cleanup(cloneResult)
+	defer func() { _ = cloneManager.Cleanup(cloneResult) }()
 
 	report := &ScanReport{
 		Repository: repoInfo.URL,
@@ -684,7 +805,7 @@ func executeRemoteScan(ctx context.Context, cfg *config.Config, repoInfo *reposi
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
-	defer cloneManager.Cleanup(cloneResult)
+	defer func() { _ = cloneManager.Cleanup(cloneResult) }()
 
 	slog.Info("Step 2/4: Repository cloned and zipped",
 		"path", cloneResult.Path,
@@ -781,50 +902,79 @@ func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *re
 		return nil, fmt.Errorf("required standalone tools are not installed - see instructions above")
 	}
 
-	// Create auth provider from config
-	auth := repository.NewAuthProviderFromConfig(cfg)
+	var scanPath string
+	var branch string
+	var commit string
+	var repoURL string
 
-	// Create clone manager
-	cloneManager := repository.NewCloneManager("", auth)
-
-	// Build clone URL if not already set
-	if repoInfo.CloneURL == "" && repoInfo.Provider != repository.Unknown {
-		switch repoInfo.Provider {
-		case repository.GitHub:
-			repoInfo.CloneURL = fmt.Sprintf("https://github.com/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
-		case repository.GitLab:
-			baseURL := "https://gitlab.com"
-			if len(cfg.Git.GitLab) > 0 && cfg.Git.GitLab[0].APIURL != "" {
-				baseURL = strings.TrimSuffix(cfg.Git.GitLab[0].APIURL, "/api/v4")
-			}
-			repoInfo.CloneURL = fmt.Sprintf("%s/%s/%s.git", baseURL, repoInfo.Owner, repoInfo.Repo)
-		case repository.Bitbucket:
-			repoInfo.CloneURL = fmt.Sprintf("https://bitbucket.org/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+	// Check if we're using local path mode (no cloning needed)
+	if opts.LocalPath != "" {
+		// Use local path directly - no cloning
+		absPath, err := filepath.Abs(opts.LocalPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve local path: %w", err)
 		}
-	}
+		scanPath = absPath
+		branch = opts.Branch
+		commit = opts.Commit
+		// Use URL if provided, otherwise use local path as identifier
+		if repoInfo != nil && repoInfo.URL != "" {
+			repoURL = repoInfo.URL
+		} else {
+			repoURL = "local://" + absPath
+		}
+		slog.Info("Using local path for standalone scan", "path", scanPath, "branch", branch, "commit", commit)
+	} else {
+		// Clone repository as before
+		// Create auth provider from config
+		auth := repository.NewAuthProviderFromConfig(cfg)
 
-	// Clone repository
-	slog.Info("Cloning repository for standalone scan", "url", repoInfo.CloneURL)
-	cloneResult, err := cloneManager.Clone(ctx, repoInfo, true)
-	if err != nil {
-		return nil, fmt.Errorf("failed to clone repository: %w", err)
-	}
-	defer cloneManager.Cleanup(cloneResult)
+		// Create clone manager
+		cloneManager := repository.NewCloneManager("", auth)
 
-	slog.Info("Repository cloned", "path", cloneResult.Path, "branch", cloneResult.Branch, "commit", cloneResult.CommitHash)
+		// Build clone URL if not already set
+		if repoInfo.CloneURL == "" && repoInfo.Provider != repository.Unknown {
+			switch repoInfo.Provider {
+			case repository.GitHub:
+				repoInfo.CloneURL = fmt.Sprintf("https://github.com/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+			case repository.GitLab:
+				baseURL := "https://gitlab.com"
+				if len(cfg.Git.GitLab) > 0 && cfg.Git.GitLab[0].APIURL != "" {
+					baseURL = strings.TrimSuffix(cfg.Git.GitLab[0].APIURL, "/api/v4")
+				}
+				repoInfo.CloneURL = fmt.Sprintf("%s/%s/%s.git", baseURL, repoInfo.Owner, repoInfo.Repo)
+			case repository.Bitbucket:
+				repoInfo.CloneURL = fmt.Sprintf("https://bitbucket.org/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+			}
+		}
+
+		// Clone repository
+		slog.Info("Cloning repository for standalone scan", "url", repoInfo.CloneURL)
+		cloneResult, err := cloneManager.Clone(ctx, repoInfo, true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone repository: %w", err)
+		}
+		defer func() { _ = cloneManager.Cleanup(cloneResult) }()
+
+		slog.Info("Repository cloned", "path", cloneResult.Path, "branch", cloneResult.Branch, "commit", cloneResult.CommitHash)
+		scanPath = cloneResult.Path
+		branch = cloneResult.Branch
+		commit = cloneResult.CommitHash
+		repoURL = repoInfo.URL
+	}
 
 	// Run standalone scanners (parallel by default)
 	slog.Info("Running scanners", "parallel", opts.Parallel, "scanners", standaloneTypes)
-	standaloneResults, err := standalone.RunStandaloneScansParallel(ctx, cloneResult.Path, standaloneTypes, opts.AssetsDir, opts.Parallel)
+	standaloneResults, err := standalone.RunStandaloneScansParallel(ctx, scanPath, standaloneTypes, opts.AssetsDir, opts.Parallel)
 	if err != nil {
 		return nil, fmt.Errorf("standalone scan failed: %w", err)
 	}
 
 	// Convert standalone results to ScanReport format
 	report := &ScanReport{
-		Repository: repoInfo.URL,
-		Branch:     cloneResult.Branch,
-		Commit:     cloneResult.CommitHash,
+		Repository: repoURL,
+		Branch:     branch,
+		Commit:     commit,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		Status:     "completed",
 		Scanners:   scanners,
@@ -952,7 +1102,7 @@ func submitToSRS(ctx context.Context, srsURL, zipPath string, repoInfo *reposito
 	if err != nil {
 		return nil, fmt.Errorf("failed to open zip file: %w", err)
 	}
-	defer zipFile.Close()
+	defer func() { _ = zipFile.Close() }()
 
 	// Create multipart form
 	body := &bytes.Buffer{}
@@ -1003,7 +1153,7 @@ func submitToSRS(ctx context.Context, srsURL, zipPath string, repoInfo *reposito
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response
 	respBody, err := io.ReadAll(resp.Body)
@@ -1178,17 +1328,17 @@ func outputScanTable(report *ScanReport, outputFile string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		writer = file
 	}
 
 	// Print header
-	fmt.Fprintf(writer, "\n=== SecureLens Scan Report ===\n\n")
-	fmt.Fprintf(writer, "Repository: %s\n", report.Repository)
-	fmt.Fprintf(writer, "Branch:     %s\n", report.Branch)
-	fmt.Fprintf(writer, "Commit:     %s\n", report.Commit)
-	fmt.Fprintf(writer, "Timestamp:  %s\n", report.Timestamp)
-	fmt.Fprintf(writer, "Status:     %s\n\n", report.Status)
+	_, _ = fmt.Fprintf(writer, "\n=== SecureLens Scan Report ===\n\n")
+	_, _ = fmt.Fprintf(writer, "Repository: %s\n", report.Repository)
+	_, _ = fmt.Fprintf(writer, "Branch:     %s\n", report.Branch)
+	_, _ = fmt.Fprintf(writer, "Commit:     %s\n", report.Commit)
+	_, _ = fmt.Fprintf(writer, "Timestamp:  %s\n", report.Timestamp)
+	_, _ = fmt.Fprintf(writer, "Status:     %s\n\n", report.Status)
 
 	// Print scanner results
 	table := tablewriter.NewWriter(writer)
@@ -1212,11 +1362,11 @@ func outputScanTable(report *ScanReport, outputFile string) error {
 			severityStr = extractSeveritySummary(result)
 		}
 
-		table.Append([]string{scanner, status, findings, severityStr})
+		_ = table.Append([]string{scanner, status, findings, severityStr})
 	}
 
-	table.Render()
-	fmt.Fprintln(writer)
+	_ = table.Render()
+	_, _ = fmt.Fprintln(writer)
 
 	return nil
 }
@@ -1267,6 +1417,11 @@ func extractFindingsCount(result map[string]interface{}) string {
 	}
 
 	return "-"
+}
+
+// ExtractSeveritySummary extracts severity breakdown from results (exported for UI use)
+func ExtractSeveritySummary(result map[string]interface{}) string {
+	return extractSeveritySummary(result)
 }
 
 // extractSeveritySummary extracts severity breakdown from results
@@ -1408,6 +1563,12 @@ Examples:
 			}
 
 			slog.Info("Discovering repositories within scope")
+
+			// If provider filter is specified (and not used with --repo), filter config
+			if provider != "" && repoName == "" {
+				cfg = filterConfigByProvider(cfg, provider)
+			}
+
 			repos, err := discoverRepositories(ctx, cfg, limit, includeBranches)
 			if err != nil {
 				slog.Error("Failed to discover repositories", "error", err)
@@ -1434,7 +1595,7 @@ Examples:
 	scopeCmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file (default: stdout)")
 	scopeCmd.Flags().BoolVar(&countOnly, "count-only", false, "only display the count of discovered repositories")
 	scopeCmd.Flags().StringVar(&repoName, "repo", "", "check if a specific repository is accessible (format: owner/repo)")
-	scopeCmd.Flags().StringVar(&provider, "provider", "", "provider for the repo (github, gitlab, bitbucket) when using --repo")
+	scopeCmd.Flags().StringVar(&provider, "provider", "", "filter by provider (github, gitlab, bitbucket) or specify provider for --repo")
 	scopeCmd.Flags().IntVar(&limit, "limit", 0, "limit the number of repositories to scan (0 for no limit)")
 	scopeCmd.Flags().BoolVar(&includeBranches, "include-branches", false, "include all accessible branches for each repository")
 
@@ -1455,11 +1616,11 @@ func outputResults(repos []DiscoveredRepository, format, outputFile string) erro
 	case "table":
 		return formatTable(repos, outputFile)
 	default:
-		return fmt.Errorf("Unsupported output format: %s", format)
+		return fmt.Errorf("unsupported output format: %s", format)
 	}
 
 	if err != nil {
-		return fmt.Errorf("Failed to format output: %w", err)
+		return fmt.Errorf("failed to format output: %w", err)
 	}
 
 	if outputFile != "" {
@@ -1484,9 +1645,9 @@ func formatTable(repos []DiscoveredRepository, outputFile string) error {
 	if outputFile != "" {
 		file, err := os.Create(outputFile)
 		if err != nil {
-			return fmt.Errorf("Failed to create output file: %w", err)
+			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		writer = file
 	}
 
@@ -1529,7 +1690,7 @@ func formatTable(repos []DiscoveredRepository, outputFile string) error {
 			}
 			row = append(row, branchesStr)
 		}
-		table.Append(row)
+		_ = table.Append(row)
 	}
 
 	return table.Render()
@@ -1784,10 +1945,10 @@ func viewReport(reportPath string, format string, showDetails bool, scannerFilte
 			severityStr = extractSeveritySummary(result)
 		}
 
-		table.Append([]string{scanner, status, findings, severityStr})
+		_ = table.Append([]string{scanner, status, findings, severityStr})
 	}
 
-	table.Render()
+	_ = table.Render()
 
 	// Show detailed findings if requested
 	if showDetails {
@@ -1858,7 +2019,7 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 					line = fmt.Sprintf("%d", int(l))
 				}
 			}
-			table.Append([]string{fmt.Sprintf("%d", i+1), severity, checkID, path, line, message})
+			_ = table.Append([]string{fmt.Sprintf("%d", i+1), severity, checkID, path, line, message})
 		}
 
 	case "trivy":
@@ -1883,7 +2044,7 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 						continue
 					}
 					count++
-					table.Append([]string{
+					_ = table.Append([]string{
 						fmt.Sprintf("%d", count),
 						getString(vuln, "Severity"),
 						truncate(getString(vuln, "VulnerabilityID"), 20),
@@ -1922,11 +2083,11 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 					}
 				}
 			}
-			table.Append([]string{fmt.Sprintf("%d", i+1), verified, detector, file, line})
+			_ = table.Append([]string{fmt.Sprintf("%d", i+1), verified, detector, file, line})
 		}
 	}
 
-	table.Render()
+	_ = table.Render()
 
 	if len(findings) > displayCount {
 		fmt.Printf("\n... and %d more findings (showing first %d)\n", len(findings)-displayCount, displayCount)

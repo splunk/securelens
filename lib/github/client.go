@@ -61,18 +61,22 @@ func (c *Client) ListRepositories(ctx context.Context, owner string, limit int) 
 	slog.Info("Listing GitHub repositories", "apiURL", c.apiURL, "owner", owner, "limit", limit)
 
 	var allRepos []Repository
-	options := &github.RepositoryListOptions{
+
+	// Use different pagination options based on whether we're listing by user/org or authenticated user
+	if owner == "" {
+		// List authenticated user's repositories
+		return c.listAuthenticatedUserRepos(ctx, limit)
+	}
+
+	// List by specific user or organization
+	options := &github.RepositoryListByUserOptions{
 		ListOptions: github.ListOptions{
 			Page:    1,
 			PerPage: 100,
 		},
 	}
 
-	for {
-		if limit > 0 && len(allRepos) >= limit {
-			break
-		}
-
+	for limit <= 0 || len(allRepos) < limit {
 		if err := c.limiter.Wait(ctx); err != nil {
 			return []Repository{}, err
 		}
@@ -81,7 +85,7 @@ func (c *Client) ListRepositories(ctx context.Context, owner string, limit int) 
 		var resp *github.Response
 		var err error
 
-		repos, resp, err = c.client.Repositories.List(ctx, owner, options)
+		repos, resp, err = c.client.Repositories.ListByUser(ctx, owner, options)
 
 		if err != nil {
 			slog.Error("Failed to fetch GitHub repositories", "error", err, "owner", owner, "page", options.Page)
@@ -183,6 +187,60 @@ func (c *Client) GetRepository(ctx context.Context, owner, repo string) (*Reposi
 	slog.Info("Repository retrieved successfully", "fullName", repository.FullName)
 
 	return repository, nil
+}
+
+// listAuthenticatedUserRepos lists repositories for the authenticated user
+func (c *Client) listAuthenticatedUserRepos(ctx context.Context, limit int) ([]Repository, error) {
+	slog.Info("Listing repositories for authenticated GitHub user", "limit", limit)
+
+	var allRepos []Repository
+	options := &github.RepositoryListByAuthenticatedUserOptions{
+		ListOptions: github.ListOptions{
+			Page:    1,
+			PerPage: 100,
+		},
+		Affiliation: "owner,collaborator,organization_member",
+	}
+
+	for limit <= 0 || len(allRepos) < limit {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return []Repository{}, err
+		}
+
+		repos, resp, err := c.client.Repositories.ListByAuthenticatedUser(ctx, options)
+		if err != nil {
+			slog.Error("Failed to fetch authenticated user repositories", "error", err, "page", options.Page)
+			return []Repository{}, err
+		}
+
+		for _, r := range repos {
+			allRepos = append(allRepos, Repository{
+				ID:       r.GetID(),
+				Name:     r.GetName(),
+				FullName: r.GetFullName(),
+				CloneURL: r.GetCloneURL(),
+				SSHURL:   r.GetSSHURL(),
+				HTMLURL:  r.GetHTMLURL(),
+				Private:  r.GetPrivate(),
+				Archived: r.GetArchived(),
+				Language: r.GetLanguage(),
+				Stars:    r.GetStargazersCount(),
+			})
+		}
+
+		slog.Debug("Fetched authenticated user repositories page", "page", options.Page, "count", len(repos), "total", len(allRepos))
+
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		options.Page = resp.NextPage
+	}
+
+	slog.Info("Authenticated user repositories listed successfully", "total", len(allRepos))
+	return allRepos, nil
 }
 
 func (c *Client) ListBranches(ctx context.Context, owner, repo string) ([]string, error) {
