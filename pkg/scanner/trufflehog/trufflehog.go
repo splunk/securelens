@@ -35,14 +35,14 @@ type Secret struct {
 
 // ScanResult contains the results of a Trufflehog scan
 type ScanResult struct {
-	Findings           []Secret
-	VerifiedSecrets    int
-	UnverifiedSecrets  int
-	ScanDuration       string
-	TrufflehogVersion  string
-	Bytes              int64
-	Chunks             int64
-	Error              string
+	Findings          []Secret
+	VerifiedSecrets   int
+	UnverifiedSecrets int
+	ScanDuration      string
+	TrufflehogVersion string
+	Bytes             int64
+	Chunks            int64
+	Error             string
 }
 
 // NewScanner creates a new Trufflehog scanner instance

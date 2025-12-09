@@ -29,9 +29,9 @@ type OpengrepResults struct {
 		Paths                  struct {
 			Scanned []string `json:"scanned"`
 		} `json:"paths"`
-		Results       []OpengrepFinding `json:"results"`
-		SkippedRules  []interface{}     `json:"skipped_rules"`
-		Version       string            `json:"version"`
+		Results      []OpengrepFinding `json:"results"`
+		SkippedRules []interface{}     `json:"skipped_rules"`
+		Version      string            `json:"version"`
 	} `json:"results"`
 }
 
