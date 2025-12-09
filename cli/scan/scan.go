@@ -1271,22 +1271,40 @@ func extractFindingsCount(result map[string]interface{}) string {
 
 // extractSeveritySummary extracts severity breakdown from results
 func extractSeveritySummary(result map[string]interface{}) string {
-	if bySev, exists := result["by_severity"]; exists {
-		if sevMap, ok := bySev.(map[string]interface{}); ok {
-			if len(sevMap) == 0 {
-				return "-"
-			}
-			parts := []string{}
-			// Order by severity
-			for _, sev := range []string{"CRITICAL", "HIGH", "ERROR", "MEDIUM", "WARNING", "LOW", "INFO"} {
-				if count, exists := sevMap[sev]; exists {
-					parts = append(parts, fmt.Sprintf("%s:%v", sev[:1], count))
-				}
-			}
-			if len(parts) > 0 {
-				return strings.Join(parts, " ")
+	bySev, exists := result["by_severity"]
+	if !exists {
+		return "-"
+	}
+
+	parts := []string{}
+	severityOrder := []string{"CRITICAL", "HIGH", "ERROR", "MEDIUM", "WARNING", "LOW", "INFO"}
+
+	// Handle map[string]interface{} (from JSON unmarshaling)
+	if sevMap, ok := bySev.(map[string]interface{}); ok {
+		if len(sevMap) == 0 {
+			return "-"
+		}
+		for _, sev := range severityOrder {
+			if count, exists := sevMap[sev]; exists {
+				parts = append(parts, fmt.Sprintf("%s:%v", sev[:1], count))
 			}
 		}
+	}
+
+	// Handle map[string]int (from Go code directly)
+	if sevMap, ok := bySev.(map[string]int); ok {
+		if len(sevMap) == 0 {
+			return "-"
+		}
+		for _, sev := range severityOrder {
+			if count, exists := sevMap[sev]; exists {
+				parts = append(parts, fmt.Sprintf("%s:%d", sev[:1], count))
+			}
+		}
+	}
+
+	if len(parts) > 0 {
+		return strings.Join(parts, " ")
 	}
 	return "-"
 }
