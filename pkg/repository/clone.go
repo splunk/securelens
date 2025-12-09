@@ -193,7 +193,6 @@ func (c *CloneManager) getAuth(provider GitProvider) transport.AuthMethod {
 	return nil
 }
 
-
 // createZip creates a zip archive of the repository
 func (c *CloneManager) createZip(source, target string) error {
 	slog.Debug("Creating zip archive", "source", source, "target", target)

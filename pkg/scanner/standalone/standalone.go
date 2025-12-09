@@ -296,12 +296,12 @@ func runSingleScanner(ctx context.Context, scanner ScannerType, repoPath, assets
 
 // OpenGrepResults represents the direct output from opengrep (different from SRS semgrep format)
 type OpenGrepResults struct {
-	Errors                 []interface{}       `json:"errors"`
-	InterfileLanguagesUsed []interface{}       `json:"interfile_languages_used"`
-	Paths                  OpenGrepPaths       `json:"paths"`
-	Results                []OpenGrepFinding   `json:"results"`
-	SkippedRules           []interface{}       `json:"skipped_rules"`
-	Version                string              `json:"version"`
+	Errors                 []interface{}     `json:"errors"`
+	InterfileLanguagesUsed []interface{}     `json:"interfile_languages_used"`
+	Paths                  OpenGrepPaths     `json:"paths"`
+	Results                []OpenGrepFinding `json:"results"`
+	SkippedRules           []interface{}     `json:"skipped_rules"`
+	Version                string            `json:"version"`
 }
 
 type OpenGrepPaths struct {
@@ -436,12 +436,12 @@ func runTrivy(ctx context.Context, repoPath string) (map[string]interface{}, err
 	}
 
 	return map[string]interface{}{
-		"status":               "COMPLETE",
+		"status":                "COMPLETE",
 		"vulnerabilities_count": totalVulns,
-		"by_severity":          severityCounts,
-		"artifact_name":        results.ArtifactName,
-		"artifact_type":        results.ArtifactType,
-		"results":              results.Results,
+		"by_severity":           severityCounts,
+		"artifact_name":         results.ArtifactName,
+		"artifact_type":         results.ArtifactType,
+		"results":               results.Results,
 	}, nil
 }
 

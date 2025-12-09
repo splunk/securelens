@@ -1,9 +1,9 @@
 # SecureLens Makefile
 # Standalone scanner installation and management
 
-.PHONY: all build install clean test
+.PHONY: all build install clean test lint fmt vet
 .PHONY: install_scan_tools_standalone install_opengrep install_trivy install_trufflehog install_opengrep_rules
-.PHONY: check_tools help
+.PHONY: check_tools help ci security-scan security-scan-quick security-results
 
 # Build settings
 BINARY_NAME=securelens
@@ -68,7 +68,74 @@ clean:
 
 test:
 	@echo "$(GREEN)Running tests...$(NC)"
-	$(GO) test -v ./...
+	$(GO) test -v $$(go list ./... | grep -v /assets/)
+
+lint:
+	@echo "$(GREEN)Running linters...$(NC)"
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		echo "$(YELLOW)golangci-lint not installed, running go vet only...$(NC)"; \
+		$(GO) vet ./...; \
+	fi
+
+fmt:
+	@echo "$(GREEN)Formatting code...$(NC)"
+	$(GO) fmt ./...
+
+vet:
+	@echo "$(GREEN)Running go vet...$(NC)"
+	$(GO) vet ./...
+
+# CI target - runs all checks
+ci: fmt vet test
+	@echo "$(GREEN)All CI checks passed!$(NC)"
+
+# Security scan - dogfood SecureLens on itself (mirrors CI security-scan job)
+security-scan: build
+	@echo "$(GREEN)Running SecureLens security scan (dogfooding)...$(NC)"
+	@echo ""
+	@# Check if scanner tools are installed
+	@command -v opengrep >/dev/null 2>&1 || { echo "$(RED)Error: opengrep not installed. Run: make install_opengrep$(NC)"; exit 1; }
+	@command -v trivy >/dev/null 2>&1 || { echo "$(RED)Error: trivy not installed. Run: make install_trivy$(NC)"; exit 1; }
+	@command -v trufflehog >/dev/null 2>&1 || { echo "$(RED)Error: trufflehog not installed. Run: make install_trufflehog$(NC)"; exit 1; }
+	@test -d "$(ASSETS_DIR)/opengrep-rules" || { echo "$(RED)Error: opengrep-rules not found. Run: make install_opengrep_rules$(NC)"; exit 1; }
+	@echo "$(GREEN)All scanner tools found$(NC)"
+	@echo ""
+	@# Get repo info from git
+	$(eval REPO_URL := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//' | sed 's/git@github.com:/https:\/\/github.com\//'))
+	$(eval BRANCH := $(shell git rev-parse --abbrev-ref HEAD))
+	$(eval COMMIT := $(shell git rev-parse HEAD))
+	@echo "Repository: $(REPO_URL)"
+	@echo "Branch:     $(BRANCH)"
+	@echo "Commit:     $(COMMIT)"
+	@echo ""
+	@# Run SecureLens standalone scan
+	./$(BINARY_NAME) scan repo "$(REPO_URL)" \
+		--branch "$(BRANCH)" \
+		--commit "$(COMMIT)" \
+		--mode standalone \
+		--debug
+
+# Quick security scan - just run the scan without debug output
+security-scan-quick: build
+	@echo "$(GREEN)Running quick security scan...$(NC)"
+	@command -v opengrep >/dev/null 2>&1 || { echo "$(RED)Error: opengrep not installed$(NC)"; exit 1; }
+	@command -v trivy >/dev/null 2>&1 || { echo "$(RED)Error: trivy not installed$(NC)"; exit 1; }
+	@command -v trufflehog >/dev/null 2>&1 || { echo "$(RED)Error: trufflehog not installed$(NC)"; exit 1; }
+	$(eval REPO_URL := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//' | sed 's/git@github.com:/https:\/\/github.com\//'))
+	$(eval BRANCH := $(shell git rev-parse --abbrev-ref HEAD))
+	./$(BINARY_NAME) scan repo "$(REPO_URL)" --branch "$(BRANCH)" --mode standalone
+
+# View latest scan results
+security-results:
+	@echo "$(GREEN)Viewing latest scan results...$(NC)"
+	@LATEST=$$(find reports -name "latest.json" -type f 2>/dev/null | head -1); \
+	if [ -n "$$LATEST" ]; then \
+		./$(BINARY_NAME) scan results "$$LATEST" --details; \
+	else \
+		echo "$(YELLOW)No scan results found. Run: make security-scan$(NC)"; \
+	fi
 
 # ============================================================================
 # Standalone Scanner Tools Installation
@@ -81,7 +148,16 @@ help:
 	@echo "  make build                        - Build SecureLens binary"
 	@echo "  make install                      - Install SecureLens to $(INSTALL_DIR)"
 	@echo "  make test                         - Run tests"
+	@echo "  make lint                         - Run linters (golangci-lint or go vet)"
+	@echo "  make fmt                          - Format code"
+	@echo "  make vet                          - Run go vet"
+	@echo "  make ci                           - Run all CI checks (fmt, vet, test)"
 	@echo "  make clean                        - Clean build artifacts"
+	@echo ""
+	@echo "Security scanning (dogfooding):"
+	@echo "  make security-scan                - Run full security scan (mirrors CI)"
+	@echo "  make security-scan-quick          - Quick scan without debug output"
+	@echo "  make security-results             - View latest scan results with details"
 	@echo ""
 	@echo "Standalone scanner installation:"
 	@echo "  make install_scan_tools_standalone - Install all standalone scanning tools"

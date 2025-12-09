@@ -1638,10 +1638,10 @@ func checkBitbucketRepoAccess(ctx context.Context, configs []config.BitbucketCon
 // newResultsCmd creates the results command for viewing saved scan reports
 func newResultsCmd() *cobra.Command {
 	var (
-		reportsDir string
-		format     string
+		reportsDir  string
+		format      string
 		showDetails bool
-		scanner    string
+		scanner     string
 	)
 
 	cmd := &cobra.Command{

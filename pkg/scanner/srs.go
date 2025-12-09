@@ -7,8 +7,8 @@ import (
 
 // SRSScanner implements the Scanner interface using SRS Open Source API
 type SRSScanner struct {
-	apiURL     string
-	apiKey     string
+	apiURL      string
+	apiKey      string
 	scannerType ScannerType
 }
 
