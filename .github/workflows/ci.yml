@@ -431,13 +431,14 @@ jobs:
 
             if [ "$TRIVY" -gt 0 ]; then
               COMMENT+="### Dependency Vulnerabilities (Trivy)\n\n"
-              COMMENT+="| Severity | CVE | Package | Fixed Version |\n"
-              COMMENT+="|----------|-----|---------|---------------|\n"
+              COMMENT+="| Severity | CVE | Package | File | Fixed |\n"
+              COMMENT+="|----------|-----|---------|------|-------|\n"
 
               # Parse trivy findings from JSON report (top 10)
+              # Include the Target (file path) from the parent result object
               if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
-                jq -r '[.results.trivy.results[]?.Vulnerabilities[]? | select(.)] | .[0:10][] |
-                  "| \(.Severity) | \(.VulnerabilityID) | \(.PkgName) | \(.FixedVersion // "-") |"' \
+                jq -r '[.results.trivy.results[]? | select(.Vulnerabilities) | .Target as $target | .Vulnerabilities[]? | select(.) | {Severity, VulnerabilityID, PkgName, FixedVersion, Target: $target}] | .[0:10][] |
+                  "| \(.Severity) | \(.VulnerabilityID) | \(.PkgName[:30]) | \(.Target[:40]) | \(.FixedVersion // "-") |"' \
                   "$REPORT_FILE" 2>/dev/null >> /tmp/trivy_findings.txt || true
 
                 if [ -f /tmp/trivy_findings.txt ] && [ -s /tmp/trivy_findings.txt ]; then

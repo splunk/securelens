@@ -74,6 +74,13 @@ type Model struct {
 	reportListIndex    int                 // Selected item in the list
 	currentReport      *scan.ScanReport    // Currently viewed report
 	currentReportPath  string              // Path to currently viewed report
+
+	// Branch selection state
+	branchSelectRepo     scan.DiscoveredRepository // Repo being configured for scan
+	branchSelectBranches []string                  // Available branches
+	branchSelectIndex    int                       // Currently highlighted branch
+	branchSelected       map[int]bool              // Selected branches (multi-select)
+	scanQueue            []ScanItem                // Queue of repo+branch combinations to scan
 }
 
 // New creates a new TUI model
@@ -172,6 +179,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateHome(msg)
 		case ViewRepos:
 			return m.updateRepos(msg)
+		case ViewBranchSelect:
+			return m.updateBranchSelect(msg)
 		case ViewScan:
 			return m.updateScan(msg)
 		case ViewResults:
@@ -240,6 +249,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.currentReport = msg.Report
 		m.currentReportPath = msg.Path
+
+	case BranchesLoadedMsg:
+		m.loading = false
+		if msg.Error != nil {
+			m.err = msg.Error
+			m.view = ViewRepos
+		} else {
+			m.branchSelectRepo = msg.Repo
+			m.branchSelectBranches = msg.Branches
+			m.branchSelectIndex = 0
+			m.branchSelected = make(map[int]bool)
+			// Pre-select "main" or "master" if available
+			for i, branch := range msg.Branches {
+				if branch == "main" || branch == "master" {
+					m.branchSelected[i] = true
+					m.branchSelectIndex = i
+					break
+				}
+			}
+			m.view = ViewBranchSelect
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -262,6 +292,8 @@ func (m Model) View() string {
 		content = m.viewHome()
 	case ViewRepos:
 		content = m.viewRepos()
+	case ViewBranchSelect:
+		content = m.viewBranchSelect()
 	case ViewScan:
 		content = m.viewScan()
 	case ViewResults:
@@ -473,6 +505,23 @@ func filterConfigByOrg(cfg *config.Config, provider, org string) *config.Config 
 	return filtered
 }
 
+// loadBranches fetches branches for a repository
+func (m Model) loadBranches(repo scan.DiscoveredRepository) tea.Cmd {
+	cfg := m.config
+	return func() tea.Msg {
+		ctx := context.Background()
+		branches, err := scan.FetchBranches(ctx, cfg, repo)
+		if err != nil {
+			return BranchesLoadedMsg{Repo: repo, Branches: nil, Error: err}
+		}
+		// If no branches found, default to main
+		if len(branches) == 0 {
+			branches = []string{"main"}
+		}
+		return BranchesLoadedMsg{Repo: repo, Branches: branches, Error: nil}
+	}
+}
+
 // runScan executes scanning on selected repositories
 func (m Model) runScan(repos []scan.DiscoveredRepository) tea.Cmd {
 	return func() tea.Msg {
@@ -483,6 +532,20 @@ func (m Model) runScan(repos []scan.DiscoveredRepository) tea.Cmd {
 		// For now, scan the first repository (bulk scan support in later phase)
 		ctx := context.Background()
 		report, err := scan.ScanRepository(ctx, m.config, repos[0], m.scanMode)
+		if err != nil {
+			return ScanCompleteMsg{Report: nil, Error: err}
+		}
+		return ScanCompleteMsg{Report: report, Error: nil}
+	}
+}
+
+// runScanWithBranch executes scanning on a repository with specific branch
+func (m Model) runScanWithBranch(repo scan.DiscoveredRepository, branch string) tea.Cmd {
+	cfg := m.config
+	scanMode := m.scanMode
+	return func() tea.Msg {
+		ctx := context.Background()
+		report, err := scan.ScanRepositoryWithBranch(ctx, cfg, repo, branch, scanMode)
 		if err != nil {
 			return ScanCompleteMsg{Report: nil, Error: err}
 		}
@@ -597,18 +660,141 @@ func buildBrowserPath(baseDir string, browserPath []string) string {
 }
 
 // loadReportFromFile loads and parses a report JSON file
+// It handles both combined reports (latest.json) and raw scanner outputs
 func loadReportFromFile(reportPath string) (*scan.ScanReport, error) {
 	data, err := os.ReadFile(reportPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read report: %w", err)
 	}
 
+	// First try to parse as a ScanReport
 	var report scan.ScanReport
-	if err := json.Unmarshal(data, &report); err != nil {
-		return nil, fmt.Errorf("failed to parse report: %w", err)
+	if err := json.Unmarshal(data, &report); err == nil {
+		// Check if it's a valid ScanReport (has key fields)
+		if report.Repository != "" || report.Status != "" || len(report.Scanners) > 0 {
+			return &report, nil
+		}
 	}
 
-	return &report, nil
+	// If not a ScanReport, it might be a raw scanner output
+	// Create a synthetic report from the raw output
+	filename := filepath.Base(reportPath)
+	scannerName := detectScannerFromFilename(filename)
+
+	// Parse raw output based on scanner type
+	rawReport := &scan.ScanReport{
+		Repository: "(raw scanner output)",
+		Status:     "COMPLETE",
+		Timestamp:  "",
+		Scanners:   []string{scannerName},
+		Results:    make(map[string]interface{}),
+	}
+
+	switch scannerName {
+	case "trufflehog":
+		// Trufflehog outputs NDJSON (newline-delimited JSON)
+		var findings []map[string]interface{}
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var finding map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &finding); err == nil {
+				if _, ok := finding["DetectorName"]; ok {
+					findings = append(findings, finding)
+				}
+			}
+		}
+		rawReport.Results[scannerName] = map[string]interface{}{
+			"status":         "COMPLETE",
+			"findings_count": len(findings),
+			"findings":       findings,
+		}
+
+	case "opengrep":
+		// OpenGrep outputs a JSON object with "results" array
+		var ogResults map[string]interface{}
+		if err := json.Unmarshal(data, &ogResults); err == nil {
+			findingsCount := 0
+			if results, ok := ogResults["results"].([]interface{}); ok {
+				findingsCount = len(results)
+			}
+			rawReport.Results[scannerName] = map[string]interface{}{
+				"status":         "COMPLETE",
+				"findings_count": findingsCount,
+				"findings":       ogResults["results"],
+				"by_severity":    countSeveritiesFromOpengrep(ogResults),
+			}
+		}
+
+	case "trivy":
+		// Trivy outputs a JSON object with "Results" array containing vulnerabilities
+		var trivyResults map[string]interface{}
+		if err := json.Unmarshal(data, &trivyResults); err == nil {
+			vulnCount := 0
+			if results, ok := trivyResults["Results"].([]interface{}); ok {
+				for _, r := range results {
+					if result, ok := r.(map[string]interface{}); ok {
+						if vulns, ok := result["Vulnerabilities"].([]interface{}); ok {
+							vulnCount += len(vulns)
+						}
+					}
+				}
+			}
+			rawReport.Results[scannerName] = map[string]interface{}{
+				"status":                "COMPLETE",
+				"vulnerabilities_count": vulnCount,
+				"results":               trivyResults["Results"],
+			}
+		}
+
+	default:
+		// Unknown format - try to parse as generic JSON
+		var generic interface{}
+		if err := json.Unmarshal(data, &generic); err == nil {
+			rawReport.Results[scannerName] = map[string]interface{}{
+				"status": "COMPLETE",
+				"raw":    generic,
+			}
+		}
+	}
+
+	return rawReport, nil
+}
+
+// detectScannerFromFilename extracts scanner name from filename
+func detectScannerFromFilename(filename string) string {
+	filename = strings.ToLower(filename)
+	if strings.Contains(filename, "trufflehog") {
+		return "trufflehog"
+	}
+	if strings.Contains(filename, "opengrep") || strings.Contains(filename, "semgrep") {
+		return "opengrep"
+	}
+	if strings.Contains(filename, "trivy") {
+		return "trivy"
+	}
+	// Default: use filename without extension
+	return strings.TrimSuffix(filename, ".json")
+}
+
+// countSeveritiesFromOpengrep counts findings by severity for opengrep results
+func countSeveritiesFromOpengrep(results map[string]interface{}) map[string]int {
+	counts := make(map[string]int)
+	if findings, ok := results["results"].([]interface{}); ok {
+		for _, f := range findings {
+			if finding, ok := f.(map[string]interface{}); ok {
+				if extra, ok := finding["extra"].(map[string]interface{}); ok {
+					if sev, ok := extra["severity"].(string); ok {
+						counts[sev]++
+					}
+				}
+			}
+		}
+	}
+	return counts
 }
 
 // saveReport saves a scan report to the reports directory structure:
