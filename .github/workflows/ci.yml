@@ -1,0 +1,563 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+env:
+  GO_VERSION: '1.21'
+
+jobs:
+  # ============================================================================
+  # Build Job
+  # ============================================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build
+        run: make build
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: securelens-binary
+          path: securelens
+          retention-days: 1
+
+  # ============================================================================
+  # Lint Job
+  # ============================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          args: --timeout=5m
+
+  # ============================================================================
+  # Test Job
+  # ============================================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run tests
+        run: make test
+
+      - name: Run tests with coverage
+        run: go test -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v /assets/)
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 7
+
+  # ============================================================================
+  # Security Scan Job - DOGFOODING SecureLens!
+  # Uses our own tool in standalone mode to scan ourselves
+  # ============================================================================
+  security-scan:
+    name: Security Scan (SecureLens Standalone)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download SecureLens binary
+        uses: actions/download-artifact@v4
+        with:
+          name: securelens-binary
+
+      - name: Make binary executable
+        run: chmod +x ./securelens
+
+      - name: Install standalone scanner tools
+        run: |
+          echo "=== Installing Scanner Tools ==="
+          echo "Platform: $(uname -s) / $(uname -m)"
+
+          # Create local bin directory (no sudo needed)
+          mkdir -p $HOME/.local/bin
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+          # Install OpenGrep (SAST scanner)
+          echo "Installing OpenGrep..."
+          make install_opengrep INSTALL_DIR=$HOME/.local/bin
+
+          # Install Trivy (dependency scanner)
+          echo "Installing Trivy..."
+          make install_trivy INSTALL_DIR=$HOME/.local/bin
+
+          # Install Trufflehog (secrets scanner)
+          echo "Installing Trufflehog..."
+          make install_trufflehog INSTALL_DIR=$HOME/.local/bin
+
+          # Download OpenGrep rules
+          echo "Installing OpenGrep rules..."
+          make install_opengrep_rules
+
+          # Verify all installations
+          echo ""
+          echo "=== Verifying Installations ==="
+          which opengrep && opengrep --version || echo "ERROR: opengrep not found"
+          which trivy && trivy --version || echo "ERROR: trivy not found"
+          which trufflehog && trufflehog --version || echo "ERROR: trufflehog not found"
+          ls -la assets/opengrep-rules/ | head -5 || echo "ERROR: opengrep-rules not found"
+
+      - name: Create Check Run - In Progress
+        id: create-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Determine the correct SHA for the check
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            SHA="${{ github.sha }}"
+          fi
+
+          CHECKID=$(gh api -X POST -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -f "name=SecureLens Security Scan" \
+            -f "head_sha=$SHA" \
+            -f "status=in_progress" \
+            -f "output[title]=SecureLens Standalone Scan" \
+            -f "output[summary]=Running security scan with SecureLens (dogfooding our own tool!)..." \
+            --jq '.id' \
+            /repos/${{ github.repository }}/check-runs)
+
+          echo "check_id=$CHECKID" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Verify scanner setup
+        run: |
+          echo "=== Verifying Scanner Setup ==="
+          echo "OpenGrep rules directory:"
+          ls -la assets/opengrep-rules/ 2>/dev/null | head -10 || echo "ERROR: opengrep-rules not found!"
+          echo ""
+          echo "Rule files count:"
+          find assets/opengrep-rules -name "*.yaml" -o -name "*.yml" 2>/dev/null | wc -l || echo "0"
+          echo ""
+          echo "Testing opengrep directly:"
+          opengrep --version || echo "ERROR: opengrep not working"
+          echo ""
+          # Quick test scan on a single file
+          echo "Quick test scan:"
+          opengrep scan -f assets/opengrep-rules --json cmd/securelens/main.go 2>&1 | head -20 || echo "Quick test failed"
+
+      - name: Run SecureLens standalone scan
+        id: securelens-scan
+        continue-on-error: true
+        run: |
+          # =====================================================
+          # DOGFOODING: Use SecureLens to scan itself!
+          # This runs our own CLI tool in standalone mode
+          # Using --local-path to scan the already checked-out code
+          # (no cloning needed - avoids auth issues with private repos)
+          # =====================================================
+
+          echo "=== Running SecureLens Standalone Scan ==="
+          echo "Repository: https://github.com/${{ github.repository }}"
+          echo "Branch: ${{ github.head_ref || github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Local Path: $(pwd)"
+
+          mkdir -p reports
+
+          # Run SecureLens in standalone mode with debug output
+          # Using --local-path to scan current directory (already checked out by actions/checkout)
+          # The --verbose flag enables detailed logging
+          ./securelens scan repo \
+            --local-path . \
+            --branch "${{ github.head_ref || github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --mode standalone \
+            --debug \
+            --verbose \
+            2>&1 | tee reports/securelens-output.log || true
+
+          # Also capture just the table output for cleaner logs
+          ./securelens scan repo \
+            --local-path . \
+            --branch "${{ github.head_ref || github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --mode standalone \
+            2>&1 | tee reports/securelens-table.txt || true
+
+          # Parse the latest report from the reports directory
+          REPORT_FILE=$(find reports -name "latest.json" -type f 2>/dev/null | head -1)
+
+          if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+            echo "Found report: $REPORT_FILE"
+
+            # Extract findings counts from each scanner
+            OPENGREP_COUNT=$(jq -r '.results.opengrep.findings_count // 0' "$REPORT_FILE" 2>/dev/null || echo "0")
+            TRIVY_COUNT=$(jq -r '.results.trivy.vulnerabilities_count // 0' "$REPORT_FILE" 2>/dev/null || echo "0")
+            TRUFFLEHOG_COUNT=$(jq -r '.results.trufflehog.findings_count // 0' "$REPORT_FILE" 2>/dev/null || echo "0")
+
+            # Get severity breakdown for OpenGrep
+            CRITICAL=$(jq -r '.results.opengrep.by_severity.CRITICAL // 0' "$REPORT_FILE" 2>/dev/null || echo "0")
+            HIGH=$(jq -r '(.results.opengrep.by_severity.HIGH // 0) + (.results.opengrep.by_severity.ERROR // 0)' "$REPORT_FILE" 2>/dev/null || echo "0")
+            MEDIUM=$(jq -r '(.results.opengrep.by_severity.MEDIUM // 0) + (.results.opengrep.by_severity.WARNING // 0)' "$REPORT_FILE" 2>/dev/null || echo "0")
+            LOW=$(jq -r '.results.opengrep.by_severity.LOW // 0' "$REPORT_FILE" 2>/dev/null || echo "0")
+            INFO=$(jq -r '.results.opengrep.by_severity.INFO // 0' "$REPORT_FILE" 2>/dev/null || echo "0")
+
+            TOTAL=$((OPENGREP_COUNT + TRIVY_COUNT + TRUFFLEHOG_COUNT))
+
+            echo "opengrep_count=$OPENGREP_COUNT" >> $GITHUB_OUTPUT
+            echo "trivy_count=$TRIVY_COUNT" >> $GITHUB_OUTPUT
+            echo "trufflehog_count=$TRUFFLEHOG_COUNT" >> $GITHUB_OUTPUT
+            echo "total=$TOTAL" >> $GITHUB_OUTPUT
+            echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+            echo "high=$HIGH" >> $GITHUB_OUTPUT
+            echo "medium=$MEDIUM" >> $GITHUB_OUTPUT
+            echo "low=$LOW" >> $GITHUB_OUTPUT
+            echo "info=$INFO" >> $GITHUB_OUTPUT
+            echo "report_file=$REPORT_FILE" >> $GITHUB_OUTPUT
+
+            # Determine conclusion based on findings
+            # Fail on: Critical, High, or any secrets (trufflehog)
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "conclusion=failure" >> $GITHUB_OUTPUT
+              echo "status_emoji=:x:" >> $GITHUB_OUTPUT
+            elif [ "$HIGH" -gt 0 ]; then
+              echo "conclusion=failure" >> $GITHUB_OUTPUT
+              echo "status_emoji=:x:" >> $GITHUB_OUTPUT
+            elif [ "$TRUFFLEHOG_COUNT" -gt 0 ]; then
+              echo "conclusion=failure" >> $GITHUB_OUTPUT
+              echo "status_emoji=:rotating_light:" >> $GITHUB_OUTPUT
+            elif [ "$TRIVY_COUNT" -gt 0 ]; then
+              echo "conclusion=neutral" >> $GITHUB_OUTPUT
+              echo "status_emoji=:warning:" >> $GITHUB_OUTPUT
+            elif [ "$MEDIUM" -gt 0 ]; then
+              echo "conclusion=neutral" >> $GITHUB_OUTPUT
+              echo "status_emoji=:warning:" >> $GITHUB_OUTPUT
+            else
+              echo "conclusion=success" >> $GITHUB_OUTPUT
+              echo "status_emoji=:white_check_mark:" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No report file found"
+            echo "total=0" >> $GITHUB_OUTPUT
+            echo "opengrep_count=0" >> $GITHUB_OUTPUT
+            echo "trivy_count=0" >> $GITHUB_OUTPUT
+            echo "trufflehog_count=0" >> $GITHUB_OUTPUT
+            echo "critical=0" >> $GITHUB_OUTPUT
+            echo "high=0" >> $GITHUB_OUTPUT
+            echo "medium=0" >> $GITHUB_OUTPUT
+            echo "low=0" >> $GITHUB_OUTPUT
+            echo "info=0" >> $GITHUB_OUTPUT
+            echo "conclusion=success" >> $GITHUB_OUTPUT
+            echo "status_emoji=:white_check_mark:" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Display scan results
+        run: |
+          echo "=== SecureLens Scan Summary ==="
+          echo "OpenGrep findings: ${{ steps.securelens-scan.outputs.opengrep_count }}"
+          echo "Trivy vulnerabilities: ${{ steps.securelens-scan.outputs.trivy_count }}"
+          echo "Trufflehog secrets: ${{ steps.securelens-scan.outputs.trufflehog_count }}"
+          echo ""
+          echo "Severity breakdown (OpenGrep):"
+          echo "  Critical: ${{ steps.securelens-scan.outputs.critical }}"
+          echo "  High: ${{ steps.securelens-scan.outputs.high }}"
+          echo "  Medium: ${{ steps.securelens-scan.outputs.medium }}"
+          echo "  Low: ${{ steps.securelens-scan.outputs.low }}"
+          echo "  Info: ${{ steps.securelens-scan.outputs.info }}"
+          echo ""
+          if [ -f reports/securelens-table.txt ]; then
+            echo "=== Full Scan Output ==="
+            cat reports/securelens-table.txt
+          fi
+
+      - name: Debug scanner errors
+        if: always()
+        run: |
+          echo "=== Checking for Scanner Errors ==="
+          REPORT_FILE="${{ steps.securelens-scan.outputs.report_file }}"
+
+          # Check if opengrep had errors
+          if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+            OPENGREP_STATUS=$(jq -r '.results.opengrep.status // "unknown"' "$REPORT_FILE" 2>/dev/null)
+            OPENGREP_ERROR=$(jq -r '.results.opengrep.error // ""' "$REPORT_FILE" 2>/dev/null)
+            OPENGREP_CMD_OUTPUT=$(jq -r '.results.opengrep.cmd_output // ""' "$REPORT_FILE" 2>/dev/null)
+
+            if [ "$OPENGREP_STATUS" = "FAILED" ] || [ -n "$OPENGREP_ERROR" ]; then
+              echo "::warning::OpenGrep scanner failed!"
+              echo "Status: $OPENGREP_STATUS"
+              echo "Error: $OPENGREP_ERROR"
+              if [ -n "$OPENGREP_CMD_OUTPUT" ]; then
+                echo ""
+                echo "=== OpenGrep Command Output ==="
+                echo "$OPENGREP_CMD_OUTPUT"
+              fi
+            else
+              echo "OpenGrep status: $OPENGREP_STATUS"
+            fi
+          fi
+
+          # Show verbose log if available
+          if [ -f reports/securelens-output.log ]; then
+            echo ""
+            echo "=== SecureLens Verbose Output (last 100 lines) ==="
+            tail -100 reports/securelens-output.log
+          fi
+
+      - name: View detailed findings
+        if: steps.securelens-scan.outputs.total != '0'
+        run: |
+          REPORT_FILE="${{ steps.securelens-scan.outputs.report_file }}"
+          if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+            echo "=== Detailed Findings ==="
+            ./securelens scan results "$REPORT_FILE" --details 2>&1 | head -100 || true
+          fi
+
+      - name: Update Check Run - Complete
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CONCLUSION="${{ steps.securelens-scan.outputs.conclusion }}"
+          CONCLUSION="${CONCLUSION:-success}"
+
+          # Build title based on results
+          TITLE="SecureLens: ${{ steps.securelens-scan.outputs.total }} total findings"
+
+          # Create summary markdown
+          SUMMARY="## ${{ steps.securelens-scan.outputs.status_emoji }} SecureLens Security Scan Results\n\n"
+          SUMMARY+="_Dogfooding: SecureLens scanning itself!_\n\n"
+          SUMMARY+="### Scanner Results\n\n"
+          SUMMARY+="| Scanner | Findings | Status |\n"
+          SUMMARY+="|---------|----------|--------|\n"
+
+          OPENGREP="${{ steps.securelens-scan.outputs.opengrep_count }}"
+          TRIVY="${{ steps.securelens-scan.outputs.trivy_count }}"
+          TRUFFLEHOG="${{ steps.securelens-scan.outputs.trufflehog_count }}"
+
+          if [ "$OPENGREP" -gt 0 ]; then
+            SUMMARY+="| OpenGrep (SAST) | $OPENGREP | :warning: |\n"
+          else
+            SUMMARY+="| OpenGrep (SAST) | $OPENGREP | :white_check_mark: |\n"
+          fi
+
+          if [ "$TRIVY" -gt 0 ]; then
+            SUMMARY+="| Trivy (Dependencies) | $TRIVY | :warning: |\n"
+          else
+            SUMMARY+="| Trivy (Dependencies) | $TRIVY | :white_check_mark: |\n"
+          fi
+
+          if [ "$TRUFFLEHOG" -gt 0 ]; then
+            SUMMARY+="| Trufflehog (Secrets) | $TRUFFLEHOG | :rotating_light: |\n"
+          else
+            SUMMARY+="| Trufflehog (Secrets) | $TRUFFLEHOG | :white_check_mark: |\n"
+          fi
+
+          SUMMARY+="\n### OpenGrep Severity Breakdown\n\n"
+          SUMMARY+="| Severity | Count |\n"
+          SUMMARY+="|----------|-------|\n"
+          SUMMARY+="| :red_circle: Critical | ${{ steps.securelens-scan.outputs.critical }} |\n"
+          SUMMARY+="| :orange_circle: High/Error | ${{ steps.securelens-scan.outputs.high }} |\n"
+          SUMMARY+="| :yellow_circle: Medium/Warning | ${{ steps.securelens-scan.outputs.medium }} |\n"
+          SUMMARY+="| :large_blue_circle: Low | ${{ steps.securelens-scan.outputs.low }} |\n"
+          SUMMARY+="| :white_circle: Info | ${{ steps.securelens-scan.outputs.info }} |\n"
+          SUMMARY+="\n**Total:** ${{ steps.securelens-scan.outputs.total }} findings\n\n"
+
+          if [ "$CONCLUSION" == "failure" ]; then
+            SUMMARY+="> :x: **Action Required:** Critical/High severity findings or secrets detected. Please review and fix before merging.\n"
+          elif [ "$CONCLUSION" == "neutral" ]; then
+            SUMMARY+="> :warning: **Warning:** Medium severity findings or vulnerable dependencies detected. Consider reviewing before merging.\n"
+          else
+            SUMMARY+="> :white_check_mark: **Passed:** No critical security issues detected.\n"
+          fi
+
+          # Interpret \n escape sequences in SUMMARY
+          SUMMARY_FORMATTED=$(printf '%b' "$SUMMARY")
+
+          gh api -X PATCH -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -f "conclusion=$CONCLUSION" \
+            -f "output[title]=$TITLE" \
+            -f "output[summary]=$SUMMARY_FORMATTED" \
+            /repos/${{ github.repository }}/check-runs/${{ steps.create-check.outputs.check_id }}
+
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: securelens-scan-results
+          path: reports/
+          retention-days: 30
+
+      - name: Comment on PR with findings
+        if: github.event_name == 'pull_request' && steps.securelens-scan.outputs.total != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TOTAL="${{ steps.securelens-scan.outputs.total }}"
+          CRITICAL="${{ steps.securelens-scan.outputs.critical }}"
+          HIGH="${{ steps.securelens-scan.outputs.high }}"
+          MEDIUM="${{ steps.securelens-scan.outputs.medium }}"
+          TRUFFLEHOG="${{ steps.securelens-scan.outputs.trufflehog_count }}"
+          TRIVY="${{ steps.securelens-scan.outputs.trivy_count }}"
+          REPORT_FILE="${{ steps.securelens-scan.outputs.report_file }}"
+
+          # Only comment if there are notable findings
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$TRUFFLEHOG" -gt 0 ] || [ "$TRIVY" -gt 0 ]; then
+            COMMENT="## :shield: SecureLens Security Scan Results\n\n"
+            COMMENT+="_Dogfooding: SecureLens scanning itself!_\n\n"
+            COMMENT+="| Scanner | Findings |\n"
+            COMMENT+="|---------|----------|\n"
+            COMMENT+="| OpenGrep (SAST) | ${{ steps.securelens-scan.outputs.opengrep_count }} |\n"
+            COMMENT+="| Trivy (Dependencies) | $TRIVY |\n"
+            COMMENT+="| Trufflehog (Secrets) | $TRUFFLEHOG |\n\n"
+
+            if [ "$TRUFFLEHOG" -gt 0 ]; then
+              COMMENT+=":rotating_light: **SECRETS DETECTED!** Please review these findings.\n\n"
+
+              # Extract and show top 10 trufflehog findings with file paths
+              if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+                COMMENT+="### Trufflehog Findings (first 10)\n\n"
+                COMMENT+="| Verified | Detector | File | Redacted |\n"
+                COMMENT+="|----------|----------|------|----------|\n"
+
+                # Parse trufflehog findings from JSON report
+                jq -r '.results.trufflehog.findings[:10][] |
+                  "| \(if .Verified then "**YES**" else "No" end) | \(.DetectorName) | \(.SourceMetadata.Data.Filesystem.file // .SourceMetadata.Data.Git.file // "-") | \(.Redacted[:40] // "-") |"' \
+                  "$REPORT_FILE" 2>/dev/null >> /tmp/th_findings.txt || true
+
+                if [ -f /tmp/th_findings.txt ] && [ -s /tmp/th_findings.txt ]; then
+                  COMMENT+="$(cat /tmp/th_findings.txt)\n\n"
+                fi
+              fi
+            fi
+
+            if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+              COMMENT+=":x: **Please address critical/high severity findings before merging.**\n\n"
+            fi
+
+            if [ "$TRIVY" -gt 0 ]; then
+              COMMENT+="### Dependency Vulnerabilities (Trivy)\n\n"
+              COMMENT+="| Severity | CVE | Package | File | Fixed |\n"
+              COMMENT+="|----------|-----|---------|------|-------|\n"
+
+              # Parse trivy findings from JSON report (top 10)
+              # Include the Target (file path) from the parent result object
+              if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+                jq -r '[.results.trivy.results[]? | select(.Vulnerabilities) | .Target as $target | .Vulnerabilities[]? | select(.) | {Severity, VulnerabilityID, PkgName, FixedVersion, Target: $target}] | .[0:10][] |
+                  "| \(.Severity) | \(.VulnerabilityID) | \(.PkgName[:30]) | \(.Target[:40]) | \(.FixedVersion // "-") |"' \
+                  "$REPORT_FILE" 2>/dev/null >> /tmp/trivy_findings.txt || true
+
+                if [ -f /tmp/trivy_findings.txt ] && [ -s /tmp/trivy_findings.txt ]; then
+                  COMMENT+="$(cat /tmp/trivy_findings.txt)\n\n"
+                fi
+              fi
+            fi
+
+            COMMENT+="<details>\n<summary>Run scan locally</summary>\n\n"
+            COMMENT+="Download the \`securelens-scan-results\` artifact for full details, or run locally:\n"
+            COMMENT+="\`\`\`bash\n"
+            COMMENT+="./securelens scan repo --local-path . --mode standalone --debug\n"
+            COMMENT+="./securelens scan results reports/*/latest.json --details\n"
+            COMMENT+="\`\`\`\n"
+            COMMENT+="</details>\n\n"
+            COMMENT+="_Scanned with SecureLens (OpenGrep + Trivy + Trufflehog)_"
+
+            echo -e "$COMMENT" | gh pr comment ${{ github.event.pull_request.number }} --body-file -
+          fi
+
+      - name: Fail if critical findings
+        if: steps.securelens-scan.outputs.conclusion == 'failure'
+        run: |
+          echo "::error::Security scan found critical issues!"
+          echo ""
+          echo "Critical: ${{ steps.securelens-scan.outputs.critical }}"
+          echo "High: ${{ steps.securelens-scan.outputs.high }}"
+          echo "Secrets: ${{ steps.securelens-scan.outputs.trufflehog_count }}"
+          echo ""
+          echo "Please review the scan results and fix the issues before merging."
+          exit 1
+
+  # ============================================================================
+  # All Checks Summary
+  # ============================================================================
+  all-checks:
+    name: All Checks
+    runs-on: ubuntu-latest
+    needs: [build, lint, test, security-scan]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          echo "=== CI Results Summary ==="
+          echo "Build: ${{ needs.build.result }}"
+          echo "Lint: ${{ needs.lint.result }}"
+          echo "Test: ${{ needs.test.result }}"
+          echo "Security Scan: ${{ needs.security-scan.result }}"
+          echo ""
+
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::Build failed"
+            exit 1
+          fi
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+            echo "::error::Lint failed"
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::Tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.security-scan.result }}" != "success" ]; then
+            echo "::error::Security scan failed"
+            exit 1
+          fi
+
+          echo "::notice::All checks passed!"

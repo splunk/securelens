@@ -29,9 +29,9 @@ type OpengrepResults struct {
 		Paths                  struct {
 			Scanned []string `json:"scanned"`
 		} `json:"paths"`
-		Results       []OpengrepFinding `json:"results"`
-		SkippedRules  []interface{}     `json:"skipped_rules"`
-		Version       string            `json:"version"`
+		Results      []OpengrepFinding `json:"results"`
+		SkippedRules []interface{}     `json:"skipped_rules"`
+		Version      string            `json:"version"`
 	} `json:"results"`
 }
 
@@ -137,8 +137,8 @@ func (o *OpengrepScanner) Scan(ctx context.Context, repoPath string, opts scanne
 		slog.Error("failed to create temporary output file", "error", err)
 		return nil, fmt.Errorf("failed to create temporary output file: %w", err)
 	}
-	defer os.Remove(outputFile.Name())
-	outputFile.Close()
+	defer func() { _ = os.Remove(outputFile.Name()) }()
+	_ = outputFile.Close()
 
 	// Build the opengrep command
 	// opengrep scan -f <rulesPath> <repoPath> --json --json-output <outputFile>

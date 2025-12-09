@@ -101,7 +101,7 @@ func TestListRepositoriesForOrganizations(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := context.Background()
-		repos, err := client.ListRepositoriesForOrganizations(ctx, []string{}, 0)
+		repos, _ := client.ListRepositoriesForOrganizations(ctx, []string{}, 0)
 
 		// Should fall back to authenticated user's repos
 		assert.NotNil(t, repos)

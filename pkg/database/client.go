@@ -10,8 +10,8 @@ type Client struct {
 	db *sql.DB
 }
 
-// Config holds database connection configuration
-type Config struct {
+// ClientConfig holds database connection configuration for the legacy client
+type ClientConfig struct {
 	Host           string
 	Port           int
 	Name           string
@@ -21,7 +21,7 @@ type Config struct {
 }
 
 // NewClient creates a new database client
-func NewClient(config Config) (*Client, error) {
+func NewClient(config ClientConfig) (*Client, error) {
 	slog.Info("Connecting to database",
 		"host", config.Host,
 		"port", config.Port,

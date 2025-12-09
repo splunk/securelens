@@ -21,12 +21,14 @@ type Config struct {
 
 // DatabaseConfig holds database connection settings
 type DatabaseConfig struct {
-	Host           string `yaml:"host"`
-	Port           int    `yaml:"port"`
-	Name           string `yaml:"name"`
-	Username       string `yaml:"username"`
-	Password       string `yaml:"password"`
-	MaxConnections int    `yaml:"max_connections"`
+	Driver         string `yaml:"driver"`          // sqlite, mysql (default: sqlite)
+	FilePath       string `yaml:"filepath"`        // SQLite: path to db file (default: ~/.securelens/securelens.db)
+	Host           string `yaml:"host"`            // MySQL: hostname
+	Port           int    `yaml:"port"`            // MySQL: port
+	Name           string `yaml:"name"`            // MySQL: database name
+	Username       string `yaml:"username"`        // MySQL: username
+	Password       string `yaml:"password"`        // MySQL: password
+	MaxConnections int    `yaml:"max_connections"` // MySQL: connection pool size
 }
 
 // GitConfig holds Git provider credentials
@@ -37,9 +39,10 @@ type GitConfig struct {
 }
 
 type GitLabConfig struct {
-	Name   string `mapstructure:"name"`
-	Token  string `mapstructure:"token"`
-	APIURL string `mapstructure:"api_url"`
+	Name   string   `mapstructure:"name"`
+	Token  string   `mapstructure:"token"`
+	APIURL string   `mapstructure:"api_url"`
+	Groups []string `mapstructure:"groups"` // GitLab groups to scan (e.g., "myorg/subgroup")
 }
 
 type GitHubConfig struct {
@@ -50,11 +53,12 @@ type GitHubConfig struct {
 }
 
 type BitbucketConfig struct {
-	Name        string `mapstructure:"name"`
-	Username    string `mapstructure:"username"`
-	AppPassword string `mapstructure:"app_password"`
-	APIURL      string `mapstructure:"api_url"`
-	Workspace   string `mapstructure:"workspace"`
+	Name        string   `mapstructure:"name"`
+	Username    string   `mapstructure:"username"`
+	AppPassword string   `mapstructure:"app_password"`
+	APIURL      string   `mapstructure:"api_url"`
+	Workspace   string   `mapstructure:"workspace"`
+	Projects    []string `mapstructure:"projects"` // Bitbucket projects to scan
 }
 
 // SRSConfig holds SRS API configuration
@@ -205,10 +209,10 @@ func validateGitHubConfigs(configs []GitHubConfig) error {
 func validateBitbucketConfigs(configs []BitbucketConfig) error {
 	for i, bb := range configs {
 		if bb.Username == "" {
-			return fmt.Errorf("Bitbucket config at index %d is missing username", i)
+			return fmt.Errorf("bitbucket config at index %d is missing username", i)
 		}
 		if bb.AppPassword == "" {
-			return fmt.Errorf("Bitbucket config at index %d is missing app_password", i)
+			return fmt.Errorf("bitbucket config at index %d is missing app_password", i)
 		}
 	}
 	return nil

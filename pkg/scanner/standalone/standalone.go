@@ -296,12 +296,12 @@ func runSingleScanner(ctx context.Context, scanner ScannerType, repoPath, assets
 
 // OpenGrepResults represents the direct output from opengrep (different from SRS semgrep format)
 type OpenGrepResults struct {
-	Errors                 []interface{}       `json:"errors"`
-	InterfileLanguagesUsed []interface{}       `json:"interfile_languages_used"`
-	Paths                  OpenGrepPaths       `json:"paths"`
-	Results                []OpenGrepFinding   `json:"results"`
-	SkippedRules           []interface{}       `json:"skipped_rules"`
-	Version                string              `json:"version"`
+	Errors                 []interface{}     `json:"errors"`
+	InterfileLanguagesUsed []interface{}     `json:"interfile_languages_used"`
+	Paths                  OpenGrepPaths     `json:"paths"`
+	Results                []OpenGrepFinding `json:"results"`
+	SkippedRules           []interface{}     `json:"skipped_rules"`
+	Version                string            `json:"version"`
 }
 
 type OpenGrepPaths struct {
@@ -336,13 +336,23 @@ type OpenGrepFinding struct {
 func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]interface{}, error) {
 	rulesPath := filepath.Join(assetsDir, "opengrep-rules")
 
+	// Check if rules directory exists
+	if _, err := os.Stat(rulesPath); os.IsNotExist(err) {
+		return map[string]interface{}{
+			"status":         "FAILED",
+			"error":          fmt.Sprintf("opengrep rules not found at %s", rulesPath),
+			"findings_count": 0,
+			"findings":       []interface{}{},
+		}, fmt.Errorf("opengrep rules not found at %s", rulesPath)
+	}
+
 	// Create temp output file
 	tmpFile, err := os.CreateTemp("", "opengrep-*.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	slog.Info("Running opengrep scan",
 		"rules_path", rulesPath,
@@ -350,35 +360,102 @@ func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]in
 		"output_file", tmpFile.Name(),
 	)
 
-	cmd := exec.CommandContext(ctx, "opengrep", "scan",
+	// Build opengrep command with exclusions
+	// Note: opengrep/semgrep will also respect .semgrepignore in the repo root
+	args := []string{
+		"scan",
 		"-f", rulesPath,
 		repoPath,
 		"--json",
 		"--json-output", tmpFile.Name(),
-	)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// opengrep may return non-zero even on success with findings
-		slog.Debug("opengrep command output", "output", string(output))
 	}
 
-	// Read and parse results
+	// Add exclusions for common directories that shouldn't be scanned
+	excludeDirs := []string{"assets", "references", "vendor", "node_modules", "docs"}
+	for _, dir := range excludeDirs {
+		args = append(args, "--exclude", dir)
+	}
+
+	cmd := exec.CommandContext(ctx, "opengrep", args...)
+
+	// Capture both stdout and stderr
+	output, cmdErr := cmd.CombinedOutput()
+
+	// Always log the command output for debugging (visible when ACTIONS_STEP_DEBUG=true)
+	cmdOutput := string(output)
+	if cmdOutput != "" {
+		slog.Debug("opengrep command output", "output", cmdOutput)
+	}
+
+	// Read the output file
 	data, err := os.ReadFile(tmpFile.Name())
 	if err != nil {
-		return nil, fmt.Errorf("failed to read opengrep output: %w", err)
+		slog.Error("Failed to read opengrep output file",
+			"file", tmpFile.Name(),
+			"error", err,
+			"cmd_output", cmdOutput,
+		)
+		return map[string]interface{}{
+			"status":         "FAILED",
+			"error":          fmt.Sprintf("failed to read output: %v", err),
+			"cmd_output":     cmdOutput,
+			"findings_count": 0,
+			"findings":       []interface{}{},
+		}, fmt.Errorf("failed to read opengrep output: %w", err)
+	}
+
+	// Handle empty output file
+	if len(data) == 0 {
+		errMsg := "opengrep produced empty output"
+		if cmdErr != nil {
+			errMsg = fmt.Sprintf("opengrep failed: %v", cmdErr)
+		}
+		slog.Error("OpenGrep produced no output",
+			"error", errMsg,
+			"cmd_output", cmdOutput,
+			"exit_error", cmdErr,
+		)
+		// Print to stdout for GitHub Actions visibility
+		fmt.Printf("[DEBUG] OpenGrep error - command output:\n%s\n", cmdOutput)
+
+		return map[string]interface{}{
+			"status":         "FAILED",
+			"error":          errMsg,
+			"cmd_output":     cmdOutput,
+			"findings_count": 0,
+			"findings":       []interface{}{},
+		}, fmt.Errorf("%s", errMsg)
 	}
 
 	// OpenGrep outputs directly as the results object, not wrapped
 	var results OpenGrepResults
 	if err := json.Unmarshal(data, &results); err != nil {
-		// Log the first 500 chars of data for debugging
+		// Log debugging info
 		preview := string(data)
-		if len(preview) > 500 {
-			preview = preview[:500]
+		if len(preview) > 1000 {
+			preview = preview[:1000] + "...(truncated)"
 		}
-		slog.Debug("Failed to parse opengrep output", "preview", preview, "error", err)
-		return nil, fmt.Errorf("failed to parse opengrep output: %w", err)
+		slog.Error("Failed to parse opengrep JSON output",
+			"preview", preview,
+			"error", err,
+			"data_length", len(data),
+			"cmd_output", cmdOutput,
+		)
+		// Print to stdout for GitHub Actions visibility
+		fmt.Printf("[DEBUG] OpenGrep JSON parse error:\n")
+		fmt.Printf("  Error: %v\n", err)
+		fmt.Printf("  Data length: %d bytes\n", len(data))
+		fmt.Printf("  Data preview: %s\n", preview)
+		fmt.Printf("  Command output: %s\n", cmdOutput)
+
+		return map[string]interface{}{
+			"status":         "FAILED",
+			"error":          fmt.Sprintf("failed to parse output: %v", err),
+			"raw_output":     preview,
+			"cmd_output":     cmdOutput,
+			"findings_count": 0,
+			"findings":       []interface{}{},
+		}, fmt.Errorf("failed to parse opengrep output: %w", err)
 	}
 
 	// Count findings by severity
@@ -409,11 +486,22 @@ func countBySeverity(findings []srs.SemgrepFinding) map[string]int {
 func runTrivy(ctx context.Context, repoPath string) (map[string]interface{}, error) {
 	slog.Info("Running trivy scan", "repo_path", repoPath)
 
-	cmd := exec.CommandContext(ctx, "trivy", "fs",
+	// Build trivy command with exclusions for non-relevant directories
+	args := []string{
+		"fs",
 		repoPath,
 		"--format", "json",
 		"--scanners", "vuln,secret,misconfig",
-	)
+	}
+
+	// Add exclusions for directories that shouldn't be scanned
+	// (reference examples, assets, vendor, etc.)
+	excludeDirs := []string{"assets", "references", "vendor", "node_modules", "docs", ".git"}
+	for _, dir := range excludeDirs {
+		args = append(args, "--skip-dirs", dir)
+	}
+
+	cmd := exec.CommandContext(ctx, "trivy", args...)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -436,23 +524,33 @@ func runTrivy(ctx context.Context, repoPath string) (map[string]interface{}, err
 	}
 
 	return map[string]interface{}{
-		"status":               "COMPLETE",
+		"status":                "COMPLETE",
 		"vulnerabilities_count": totalVulns,
-		"by_severity":          severityCounts,
-		"artifact_name":        results.ArtifactName,
-		"artifact_type":        results.ArtifactType,
-		"results":              results.Results,
+		"by_severity":           severityCounts,
+		"artifact_name":         results.ArtifactName,
+		"artifact_type":         results.ArtifactType,
+		"results":               results.Results,
 	}, nil
 }
 
 func runTrufflehog(ctx context.Context, repoPath string) (map[string]interface{}, error) {
 	slog.Info("Running trufflehog scan", "repo_path", repoPath)
 
-	cmd := exec.CommandContext(ctx, "trufflehog", "filesystem",
+	// Build trufflehog command with exclusions
+	args := []string{
+		"filesystem",
 		repoPath,
 		"--json",
 		"--no-update",
-	)
+	}
+
+	// Add exclusions for common directories that shouldn't be scanned
+	excludeDirs := []string{"assets", "references", "vendor", "node_modules", ".git", "docs"}
+	for _, dir := range excludeDirs {
+		args = append(args, "--exclude-paths", dir)
+	}
+
+	cmd := exec.CommandContext(ctx, "trufflehog", args...)
 
 	output, err := cmd.Output()
 	if err != nil {

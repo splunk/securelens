@@ -1,0 +1,32 @@
+# Semgrep/OpenGrep ignore file
+# This file tells semgrep/opengrep which paths to skip during scanning
+
+# Exclude reference examples and third-party assets
+assets/
+references/
+
+# Exclude test data and fixtures
+**/testdata/
+**/fixtures/
+**/*_test_data/
+
+# Exclude vendor and dependencies
+vendor/
+
+# Exclude generated files
+**/*.pb.go
+**/*_gen.go
+**/generated/
+
+# Exclude documentation
+docs/
+
+# Exclude build outputs
+bin/
+dist/
+build/
+
+# Exclude common non-code directories
+.git/
+.github/
+node_modules/

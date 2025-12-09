@@ -193,7 +193,6 @@ func (c *CloneManager) getAuth(provider GitProvider) transport.AuthMethod {
 	return nil
 }
 
-
 // createZip creates a zip archive of the repository
 func (c *CloneManager) createZip(source, target string) error {
 	slog.Debug("Creating zip archive", "source", source, "target", target)
@@ -202,10 +201,10 @@ func (c *CloneManager) createZip(source, target string) error {
 	if err != nil {
 		return err
 	}
-	defer zipFile.Close()
+	defer func() { _ = zipFile.Close() }()
 
 	writer := zip.NewWriter(zipFile)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	return filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -258,7 +257,7 @@ func (c *CloneManager) createZip(source, target string) error {
 			}
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		_, err = io.Copy(headerWriter, file)
 		return err
