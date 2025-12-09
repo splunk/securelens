@@ -41,8 +41,9 @@ ifeq ($(UNAME_S),Darwin)
     OPENGREP_OS := osx
 else
     TRIVY_OS := Linux
-    # For Linux, opengrep uses musllinux or manylinux
-    OPENGREP_OS := musllinux
+    # For Linux, use manylinux (glibc) - works on Ubuntu, Debian, etc.
+    # musllinux only works on Alpine and other musl-based distros
+    OPENGREP_OS := manylinux
 endif
 
 # Colors for output
