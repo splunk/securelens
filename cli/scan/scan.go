@@ -23,6 +23,7 @@ import (
 	"github.com/splunk/securelens/lib/github"
 	"github.com/splunk/securelens/lib/gitlab"
 	"github.com/splunk/securelens/pkg/repository"
+	"github.com/splunk/securelens/pkg/scanner/standalone"
 	"github.com/splunk/securelens/pkg/srs"
 )
 
@@ -277,8 +278,9 @@ Supports single repository scanning, bulk scanning, and discovery scanning.`,
 type ScanMode string
 
 const (
-	ScanModeLocal  ScanMode = "local"  // Clone locally and run scanners
-	ScanModeRemote ScanMode = "remote" // Submit to SRS API
+	ScanModeLocal      ScanMode = "local"      // Clone locally and run scanners
+	ScanModeRemote     ScanMode = "remote"     // Submit to SRS API
+	ScanModeStandalone ScanMode = "standalone" // Use locally installed scanner binaries
 )
 
 // RepoScanOptions holds options for repository scanning
@@ -286,7 +288,7 @@ type RepoScanOptions struct {
 	URL          string
 	Branch       string
 	Commit       string
-	Scanners     []string // fossa, semgrep, trufflehog
+	Scanners     []string // fossa, semgrep, trufflehog, opengrep, trivy
 	OutputFile   string
 	OutputFormat string // raw, json, parsed
 	OutputDir    string // Directory for parsed reports
@@ -294,11 +296,13 @@ type RepoScanOptions struct {
 	ConfigPath   string
 	DryRun       bool
 	Verbose      bool
+	Debug        bool     // Enable debug mode with raw report output
 	SRSURL       string   // SRS API endpoint URL
 	Async        bool     // Return immediately without waiting for results
 	WaitFor      []string // Job status URLs to wait on (skip scanning)
 	PollInterval int      // Seconds between status polls
 	MaxWait      int      // Maximum minutes to wait for results
+	AssetsDir    string   // Directory for scanner assets (rules, etc.)
 }
 
 // ScanReport represents the scan results
@@ -329,16 +333,28 @@ URL Formats (positional argument or --url flag):
 Alternatively, use explicit flags:
   --url https://github.com/org/repo --branch develop --commit abc123
 
+Scan Modes:
+  --mode local           : Clone locally and run built-in scanners (default)
+  --mode remote          : Submit to SRS API for scanning
+  --mode standalone      : Use locally installed scanner binaries
+
 Supported Scanners:
-  - fossa      : Open source dependency vulnerabilities (OSS/SCA)
-  - semgrep    : Static application security testing (SAST)
-  - trufflehog : Secret detection
+  Remote/Local Mode:
+    - fossa      : Open source dependency vulnerabilities (OSS/SCA)
+    - semgrep    : Static application security testing (SAST)
+    - trufflehog : Secret detection
+
+  Standalone Mode (local binaries required):
+    - opengrep   : Static application security testing (SAST) - semgrep alternative
+    - trivy      : Open source dependency vulnerabilities (OSS/SCA)
+    - trufflehog : Secret detection
+    Note: FOSSA is not supported in standalone mode
 
 Output Modes:
   --output raw.json      : Write raw JSON results to file
   --output-format json   : Format output as JSON (default: table)
   --output-dir reports/  : Directory for parsed report files
-  --parsed               : Generate parsed reports in reports/ directory
+  --debug                : Write raw scanner outputs to debug/ directory
 
 Examples:
   # Scan default branch of a GitHub repository
@@ -355,11 +371,18 @@ Examples:
   # Run only specific scanners
   securelens scan repo https://github.com/myorg/myrepo --scanners fossa --scanners semgrep
 
+  # Use standalone mode with local scanner binaries
+  securelens scan repo https://github.com/myorg/myrepo --mode standalone
+  securelens scan repo https://github.com/myorg/myrepo --mode standalone --scanners opengrep --scanners trivy
+
   # Output raw results to file
   securelens scan repo https://github.com/myorg/myrepo --output results.json
 
-  # Generate parsed reports
-  securelens scan repo https://github.com/myorg/myrepo --parsed --output-dir ./reports`,
+  # Enable debug mode for raw scanner outputs
+  securelens scan repo https://github.com/myorg/myrepo --mode standalone --debug
+
+  # Submit to SRS API (remote mode)
+  securelens scan repo https://github.com/myorg/myrepo --mode remote --srs-url https://srs.example.com/api/v1/orchestrator/job_submit`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Handle --wait-for mode (skip scanning, just wait)
@@ -394,7 +417,8 @@ Examples:
 	cmd.Flags().StringVar(&opts.OutputDir, "output-dir", "reports", "directory for parsed report files")
 
 	// Mode flags
-	cmd.Flags().StringVar((*string)(&opts.Mode), "mode", "local", "scan mode: local (clone and scan) or remote (SRS API)")
+	cmd.Flags().StringVar((*string)(&opts.Mode), "mode", "local", "scan mode: local, remote (SRS API), or standalone (local binaries)")
+	cmd.Flags().StringVar(&opts.AssetsDir, "assets-dir", "assets", "directory containing scanner assets (e.g., opengrep rules)")
 
 	// SRS flags
 	cmd.Flags().StringVar(&opts.SRSURL, "srs-url", "", "SRS API endpoint URL (e.g., https://srs.example.com/api/v1/orchestrator/job_submit)")
@@ -407,6 +431,7 @@ Examples:
 	cmd.Flags().StringVarP(&opts.ConfigPath, "config", "c", "", "path to configuration file")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "show what would be done without executing")
 	cmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", false, "enable verbose output")
+	cmd.Flags().BoolVar(&opts.Debug, "debug", false, "enable debug mode with raw report output to debug/ directory")
 
 	// Add shorthand flag for parsed output
 	var parsed bool
@@ -511,6 +536,8 @@ func runRepoScan(ctx context.Context, opts *RepoScanOptions) error {
 		report, err = executeLocalScan(ctx, cfg, repoInfo, scanners)
 	case ScanModeRemote:
 		report, err = executeRemoteScan(ctx, cfg, repoInfo, scanners, opts)
+	case ScanModeStandalone:
+		report, err = executeStandaloneScan(ctx, cfg, repoInfo, scanners, opts)
 	default:
 		return fmt.Errorf("unknown scan mode: %s", opts.Mode)
 	}
@@ -719,6 +746,132 @@ func executeRemoteScan(ctx context.Context, cfg *config.Config, repoInfo *reposi
 	report.Results["job_status_url"] = srsResponse.JobStatusURL
 
 	return report, nil
+}
+
+func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *repository.RepoURLInfo, scanners []string, opts *RepoScanOptions) (*ScanReport, error) {
+	slog.Info("Executing standalone scan with local binaries")
+
+	// Check tool availability
+	toolStatuses := standalone.CheckTools(opts.AssetsDir)
+
+	// Check if any requested scanners are unavailable
+	standaloneTypes := standalone.ParseScannerNames(scanners)
+	missingTools := false
+	for _, status := range toolStatuses {
+		for _, scannerType := range standaloneTypes {
+			if string(scannerType) == status.Name && !status.Available {
+				missingTools = true
+				break
+			}
+		}
+	}
+
+	if missingTools {
+		standalone.PrintToolStatus(toolStatuses)
+		return nil, fmt.Errorf("required standalone tools are not installed - see instructions above")
+	}
+
+	// Create auth provider from config
+	auth := repository.NewAuthProviderFromConfig(cfg)
+
+	// Create clone manager
+	cloneManager := repository.NewCloneManager("", auth)
+
+	// Build clone URL if not already set
+	if repoInfo.CloneURL == "" && repoInfo.Provider != repository.Unknown {
+		switch repoInfo.Provider {
+		case repository.GitHub:
+			repoInfo.CloneURL = fmt.Sprintf("https://github.com/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+		case repository.GitLab:
+			baseURL := "https://gitlab.com"
+			if len(cfg.Git.GitLab) > 0 && cfg.Git.GitLab[0].APIURL != "" {
+				baseURL = strings.TrimSuffix(cfg.Git.GitLab[0].APIURL, "/api/v4")
+			}
+			repoInfo.CloneURL = fmt.Sprintf("%s/%s/%s.git", baseURL, repoInfo.Owner, repoInfo.Repo)
+		case repository.Bitbucket:
+			repoInfo.CloneURL = fmt.Sprintf("https://bitbucket.org/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+		}
+	}
+
+	// Clone repository
+	slog.Info("Cloning repository for standalone scan", "url", repoInfo.CloneURL)
+	cloneResult, err := cloneManager.Clone(ctx, repoInfo, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to clone repository: %w", err)
+	}
+	defer cloneManager.Cleanup(cloneResult)
+
+	slog.Info("Repository cloned", "path", cloneResult.Path, "branch", cloneResult.Branch, "commit", cloneResult.CommitHash)
+
+	// Run standalone scanners
+	standaloneResults, err := standalone.RunStandaloneScans(ctx, cloneResult.Path, standaloneTypes, opts.AssetsDir)
+	if err != nil {
+		return nil, fmt.Errorf("standalone scan failed: %w", err)
+	}
+
+	// Convert standalone results to ScanReport format
+	report := &ScanReport{
+		Repository: repoInfo.URL,
+		Branch:     cloneResult.Branch,
+		Commit:     cloneResult.CommitHash,
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Status:     "completed",
+		Scanners:   scanners,
+		Results:    make(map[string]interface{}),
+	}
+
+	for scannerName, result := range standaloneResults {
+		report.Results[scannerName] = result.Results
+		if result.Error != "" {
+			report.Results[scannerName+"_error"] = result.Error
+		}
+	}
+
+	// Write debug output if enabled
+	if opts.Debug {
+		if err := writeDebugOutput(report, standaloneResults, opts); err != nil {
+			slog.Warn("Failed to write debug output", "error", err)
+		}
+	}
+
+	return report, nil
+}
+
+func writeDebugOutput(report *ScanReport, standaloneResults map[string]*standalone.StandaloneScanResult, opts *RepoScanOptions) error {
+	debugDir := filepath.Join(opts.OutputDir, "debug")
+	if err := os.MkdirAll(debugDir, 0755); err != nil {
+		return fmt.Errorf("failed to create debug directory: %w", err)
+	}
+
+	timestamp := time.Now().Format("20060102-150405")
+
+	// Write full report
+	reportPath := filepath.Join(debugDir, fmt.Sprintf("report-%s.json", timestamp))
+	reportData, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal report: %w", err)
+	}
+	if err := os.WriteFile(reportPath, reportData, 0644); err != nil {
+		return fmt.Errorf("failed to write report: %w", err)
+	}
+	slog.Info("Debug report written", "path", reportPath)
+
+	// Write raw scanner outputs
+	for name, result := range standaloneResults {
+		rawPath := filepath.Join(debugDir, fmt.Sprintf("%s-raw-%s.json", name, timestamp))
+		rawData, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			slog.Warn("Failed to marshal raw result", "scanner", name, "error", err)
+			continue
+		}
+		if err := os.WriteFile(rawPath, rawData, 0644); err != nil {
+			slog.Warn("Failed to write raw result", "scanner", name, "error", err)
+			continue
+		}
+		slog.Info("Debug raw output written", "scanner", name, "path", rawPath)
+	}
+
+	return nil
 }
 
 // SRSSubmitResponse represents the response from SRS job submission
