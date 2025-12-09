@@ -177,6 +177,22 @@ jobs:
           echo "check_id=$CHECKID" >> $GITHUB_OUTPUT
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
+      - name: Verify scanner setup
+        run: |
+          echo "=== Verifying Scanner Setup ==="
+          echo "OpenGrep rules directory:"
+          ls -la assets/opengrep-rules/ 2>/dev/null | head -10 || echo "ERROR: opengrep-rules not found!"
+          echo ""
+          echo "Rule files count:"
+          find assets/opengrep-rules -name "*.yaml" -o -name "*.yml" 2>/dev/null | wc -l || echo "0"
+          echo ""
+          echo "Testing opengrep directly:"
+          opengrep --version || echo "ERROR: opengrep not working"
+          echo ""
+          # Quick test scan on a single file
+          echo "Quick test scan:"
+          opengrep scan -f assets/opengrep-rules --json cmd/securelens/main.go 2>&1 | head -20 || echo "Quick test failed"
+
       - name: Run SecureLens standalone scan
         id: securelens-scan
         continue-on-error: true
@@ -198,12 +214,14 @@ jobs:
 
           # Run SecureLens in standalone mode with debug output
           # Using --local-path to scan current directory (already checked out by actions/checkout)
+          # The --verbose flag enables detailed logging
           ./securelens scan repo \
             --local-path . \
             --branch "${{ github.head_ref || github.ref_name }}" \
             --commit "${{ github.sha }}" \
             --mode standalone \
             --debug \
+            --verbose \
             2>&1 | tee reports/securelens-output.log || true
 
           # Also capture just the table output for cleaner logs
@@ -300,6 +318,39 @@ jobs:
             cat reports/securelens-table.txt
           fi
 
+      - name: Debug scanner errors
+        if: always()
+        run: |
+          echo "=== Checking for Scanner Errors ==="
+          REPORT_FILE="${{ steps.securelens-scan.outputs.report_file }}"
+
+          # Check if opengrep had errors
+          if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+            OPENGREP_STATUS=$(jq -r '.results.opengrep.status // "unknown"' "$REPORT_FILE" 2>/dev/null)
+            OPENGREP_ERROR=$(jq -r '.results.opengrep.error // ""' "$REPORT_FILE" 2>/dev/null)
+            OPENGREP_CMD_OUTPUT=$(jq -r '.results.opengrep.cmd_output // ""' "$REPORT_FILE" 2>/dev/null)
+
+            if [ "$OPENGREP_STATUS" = "FAILED" ] || [ -n "$OPENGREP_ERROR" ]; then
+              echo "::warning::OpenGrep scanner failed!"
+              echo "Status: $OPENGREP_STATUS"
+              echo "Error: $OPENGREP_ERROR"
+              if [ -n "$OPENGREP_CMD_OUTPUT" ]; then
+                echo ""
+                echo "=== OpenGrep Command Output ==="
+                echo "$OPENGREP_CMD_OUTPUT"
+              fi
+            else
+              echo "OpenGrep status: $OPENGREP_STATUS"
+            fi
+          fi
+
+          # Show verbose log if available
+          if [ -f reports/securelens-output.log ]; then
+            echo ""
+            echo "=== SecureLens Verbose Output (last 100 lines) ==="
+            tail -100 reports/securelens-output.log
+          fi
+
       - name: View detailed findings
         if: steps.securelens-scan.outputs.total != '0'
         run: |
@@ -367,11 +418,14 @@ jobs:
             SUMMARY+="> :white_check_mark: **Passed:** No critical security issues detected.\n"
           fi
 
+          # Interpret \n escape sequences in SUMMARY
+          SUMMARY_FORMATTED=$(printf '%b' "$SUMMARY")
+
           gh api -X PATCH -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -f "conclusion=$CONCLUSION" \
             -f "output[title]=$TITLE" \
-            -f "output[summary]=$SUMMARY" \
+            -f "output[summary]=$SUMMARY_FORMATTED" \
             /repos/${{ github.repository }}/check-runs/${{ steps.create-check.outputs.check_id }}
 
       - name: Upload scan results
