@@ -46,8 +46,9 @@ type StatusMsg string
 
 // ReposLoadedMsg is sent when repositories are loaded
 type ReposLoadedMsg struct {
-	Repos []scan.DiscoveredRepository
-	Limit int // The limit that was requested (for pagination tracking)
+	Repos    []scan.DiscoveredRepository
+	Limit    int    // The limit that was requested (for pagination tracking)
+	Provider string // The provider filter used ("" for all)
 }
 
 // ReposLoadingMsg indicates repos are being loaded

@@ -393,6 +393,7 @@ jobs:
           MEDIUM="${{ steps.securelens-scan.outputs.medium }}"
           TRUFFLEHOG="${{ steps.securelens-scan.outputs.trufflehog_count }}"
           TRIVY="${{ steps.securelens-scan.outputs.trivy_count }}"
+          REPORT_FILE="${{ steps.securelens-scan.outputs.report_file }}"
 
           # Only comment if there are notable findings
           if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$TRUFFLEHOG" -gt 0 ] || [ "$TRIVY" -gt 0 ]; then
@@ -405,14 +406,47 @@ jobs:
             COMMENT+="| Trufflehog (Secrets) | $TRUFFLEHOG |\n\n"
 
             if [ "$TRUFFLEHOG" -gt 0 ]; then
-              COMMENT+=":rotating_light: **SECRETS DETECTED!** Please remove immediately.\n\n"
+              COMMENT+=":rotating_light: **SECRETS DETECTED!** Please review these findings.\n\n"
+
+              # Extract and show top 10 trufflehog findings with file paths
+              if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+                COMMENT+="### Trufflehog Findings (first 10)\n\n"
+                COMMENT+="| Verified | Detector | File | Redacted |\n"
+                COMMENT+="|----------|----------|------|----------|\n"
+
+                # Parse trufflehog findings from JSON report
+                jq -r '.results.trufflehog.findings[:10][] |
+                  "| \(if .Verified then "**YES**" else "No" end) | \(.DetectorName) | \(.SourceMetadata.Data.Filesystem.file // .SourceMetadata.Data.Git.file // "-") | \(.Redacted[:40] // "-") |"' \
+                  "$REPORT_FILE" 2>/dev/null >> /tmp/th_findings.txt || true
+
+                if [ -f /tmp/th_findings.txt ] && [ -s /tmp/th_findings.txt ]; then
+                  COMMENT+="$(cat /tmp/th_findings.txt)\n\n"
+                fi
+              fi
             fi
 
             if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
               COMMENT+=":x: **Please address critical/high severity findings before merging.**\n\n"
             fi
 
-            COMMENT+="<details>\n<summary>View detailed results</summary>\n\n"
+            if [ "$TRIVY" -gt 0 ]; then
+              COMMENT+="### Dependency Vulnerabilities (Trivy)\n\n"
+              COMMENT+="| Severity | CVE | Package | Fixed Version |\n"
+              COMMENT+="|----------|-----|---------|---------------|\n"
+
+              # Parse trivy findings from JSON report (top 10)
+              if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
+                jq -r '[.results.trivy.results[]?.Vulnerabilities[]? | select(.)] | .[0:10][] |
+                  "| \(.Severity) | \(.VulnerabilityID) | \(.PkgName) | \(.FixedVersion // "-") |"' \
+                  "$REPORT_FILE" 2>/dev/null >> /tmp/trivy_findings.txt || true
+
+                if [ -f /tmp/trivy_findings.txt ] && [ -s /tmp/trivy_findings.txt ]; then
+                  COMMENT+="$(cat /tmp/trivy_findings.txt)\n\n"
+                fi
+              fi
+            fi
+
+            COMMENT+="<details>\n<summary>Run scan locally</summary>\n\n"
             COMMENT+="Download the \`securelens-scan-results\` artifact for full details, or run locally:\n"
             COMMENT+="\`\`\`bash\n"
             COMMENT+="./securelens scan repo --local-path . --mode standalone --debug\n"

@@ -262,8 +262,8 @@ func discoverFromBitbucket(ctx context.Context, configs []config.BitbucketConfig
 	return repos, nil
 }
 
-// filterConfigByProvider creates a filtered config with only the specified provider
-func filterConfigByProvider(cfg *config.Config, provider string) *config.Config {
+// FilterConfigByProvider creates a filtered config with only the specified provider (exported for UI use)
+func FilterConfigByProvider(cfg *config.Config, provider string) *config.Config {
 	filtered := &config.Config{
 		Database:  cfg.Database,
 		SRS:       cfg.SRS,
@@ -1566,7 +1566,7 @@ Examples:
 
 			// If provider filter is specified (and not used with --repo), filter config
 			if provider != "" && repoName == "" {
-				cfg = filterConfigByProvider(cfg, provider)
+				cfg = FilterConfigByProvider(cfg, provider)
 			}
 
 			repos, err := discoverRepositories(ctx, cfg, limit, includeBranches)
@@ -2057,7 +2057,7 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 		}
 
 	case "trufflehog":
-		table.Header([]string{"#", "Verified", "Detector", "File", "Line"})
+		table.Header([]string{"#", "Verified", "Detector", "File", "Line", "Redacted"})
 		for i, f := range findings[:displayCount] {
 			finding, ok := f.(map[string]interface{})
 			if !ok {
@@ -2065,25 +2065,36 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 			}
 			verified := "No"
 			if v, ok := finding["Verified"].(bool); ok && v {
-				verified = "Yes"
+				verified = "YES"
 			}
 			detector := getString(finding, "DetectorName")
 			file := "-"
 			line := "-"
+			redacted := truncate(getString(finding, "Redacted"), 30)
 
 			if sm, ok := finding["SourceMetadata"].(map[string]interface{}); ok {
 				if data, ok := sm["Data"].(map[string]interface{}); ok {
+					// Try Git source first
 					if git, ok := data["Git"].(map[string]interface{}); ok {
-						if f, ok := git["file"].(string); ok {
-							file = truncate(filepath.Base(f), 30)
+						if f, ok := git["file"].(string); ok && f != "" {
+							file = truncate(f, 40)
 						}
-						if l, ok := git["line"].(float64); ok {
+						if l, ok := git["line"].(float64); ok && l > 0 {
+							line = fmt.Sprintf("%d", int(l))
+						}
+					}
+					// Try Filesystem source (used in standalone mode with --local-path)
+					if fs, ok := data["Filesystem"].(map[string]interface{}); ok {
+						if f, ok := fs["file"].(string); ok && f != "" {
+							file = truncate(f, 40)
+						}
+						if l, ok := fs["line"].(float64); ok && l > 0 {
 							line = fmt.Sprintf("%d", int(l))
 						}
 					}
 				}
 			}
-			_ = table.Append([]string{fmt.Sprintf("%d", i+1), verified, detector, file, line})
+			_ = table.Append([]string{fmt.Sprintf("%d", i+1), verified, detector, file, line, redacted})
 		}
 	}
 

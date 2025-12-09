@@ -350,12 +350,23 @@ func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]in
 		"output_file", tmpFile.Name(),
 	)
 
-	cmd := exec.CommandContext(ctx, "opengrep", "scan",
+	// Build opengrep command with exclusions
+	// Note: opengrep/semgrep will also respect .semgrepignore in the repo root
+	args := []string{
+		"scan",
 		"-f", rulesPath,
 		repoPath,
 		"--json",
 		"--json-output", tmpFile.Name(),
-	)
+	}
+
+	// Add exclusions for common directories that shouldn't be scanned
+	excludeDirs := []string{"assets", "references", "vendor", "node_modules", "docs"}
+	for _, dir := range excludeDirs {
+		args = append(args, "--exclude", dir)
+	}
+
+	cmd := exec.CommandContext(ctx, "opengrep", args...)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -448,11 +459,21 @@ func runTrivy(ctx context.Context, repoPath string) (map[string]interface{}, err
 func runTrufflehog(ctx context.Context, repoPath string) (map[string]interface{}, error) {
 	slog.Info("Running trufflehog scan", "repo_path", repoPath)
 
-	cmd := exec.CommandContext(ctx, "trufflehog", "filesystem",
+	// Build trufflehog command with exclusions
+	args := []string{
+		"filesystem",
 		repoPath,
 		"--json",
 		"--no-update",
-	)
+	}
+
+	// Add exclusions for common directories that shouldn't be scanned
+	excludeDirs := []string{"assets", "references", "vendor", "node_modules", ".git", "docs"}
+	for _, dir := range excludeDirs {
+		args = append(args, "--exclude-paths", dir)
+	}
+
+	cmd := exec.CommandContext(ctx, "trufflehog", args...)
 
 	output, err := cmd.Output()
 	if err != nil {

@@ -98,8 +98,18 @@ func (m Model) viewRepos() string {
 		return b.String()
 	}
 
-	// Search bar
-	if m.searching {
+	// Add repo URL input bar
+	if m.addingRepoURL {
+		inputStyle := lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(ColorSuccess).
+			Padding(0, 1)
+		b.WriteString(inputStyle.Render("Add repo URL: " + m.repoURLInput + "█"))
+		b.WriteString("\n")
+		b.WriteString(HelpStyle.Render("Enter to add • Esc to cancel • Paste: https://github.com/owner/repo"))
+		b.WriteString("\n\n")
+	} else if m.searching {
+		// Search bar
 		searchStyle := lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(ColorPrimary).
@@ -167,7 +177,7 @@ func (m Model) viewRepos() string {
 
 	// Footer hints
 	b.WriteString("\n")
-	footerText := "/: search • space: toggle • a: select all • enter: scan • r: refresh"
+	footerText := "/: search • +: add URL • space: toggle • enter: scan • r: refresh"
 	if m.hasMoreRepos {
 		footerText += " • m: more"
 	}
@@ -176,17 +186,117 @@ func (m Model) viewRepos() string {
 	// Show repo count
 	b.WriteString("\n")
 	var countText string
-	if m.searchFilter != "" || m.tabIndex != 0 {
-		countText = fmt.Sprintf("Showing %d of %d repos", len(filteredRepos), len(m.repos))
+	if m.searchFilter != "" {
+		countText = fmt.Sprintf("Showing %d of %d repos (filtered)", len(filteredRepos), len(m.repos))
 	} else {
-		countText = fmt.Sprintf("Showing %d repos", len(m.repos))
+		countText = fmt.Sprintf("%d repos", len(m.repos))
 	}
 	if m.hasMoreRepos {
 		countText += " (more available)"
 	}
+	// Show which provider the repos were loaded from
+	if m.loadedProvider != "" {
+		countText += fmt.Sprintf(" [%s]", m.loadedProvider)
+	}
 	b.WriteString(SubtleStyle.Render(countText))
 
 	return b.String()
+}
+
+// reloadIfNeeded checks if repos need to be reloaded based on the current tab
+// and triggers a reload if the loaded provider doesn't match the selected tab
+func (m Model) reloadIfNeeded() (tea.Model, tea.Cmd) {
+	targetProvider := m.getProviderFilter()
+
+	// If we're on "All" tab and repos were loaded for a specific provider, reload
+	// If we're on a specific provider tab and repos were loaded for a different provider (or all), reload
+	if targetProvider != m.loadedProvider {
+		m.repoLoadCount = 0 // Reset pagination
+		m.hasMoreRepos = true
+		m.loading = true
+		m.repos = nil // Clear existing repos
+		m.selected = make(map[int]bool)
+		m.statusMsg = "Loading repositories..."
+		return m, m.loadRepos()
+	}
+	return m, nil
+}
+
+// parseRepoURL parses a repository URL and creates a DiscoveredRepository
+// Supports formats: https://github.com/owner/repo, https://gitlab.com/owner/repo, etc.
+func (m Model) parseRepoURL(urlStr string) *scan.DiscoveredRepository {
+	urlStr = strings.TrimSpace(urlStr)
+	urlStr = strings.TrimSuffix(urlStr, ".git")
+
+	// Detect provider and parse
+	var provider, owner, repo string
+
+	if strings.Contains(urlStr, "github.com") {
+		provider = "github"
+		parts := strings.Split(urlStr, "github.com/")
+		if len(parts) < 2 {
+			return nil
+		}
+		pathParts := strings.Split(strings.Trim(parts[1], "/"), "/")
+		if len(pathParts) < 2 {
+			return nil
+		}
+		owner = pathParts[0]
+		repo = pathParts[1]
+	} else if strings.Contains(urlStr, "gitlab") {
+		provider = "gitlab"
+		// Handle both gitlab.com and self-hosted gitlab instances
+		parts := strings.SplitN(urlStr, "://", 2)
+		if len(parts) < 2 {
+			return nil
+		}
+		pathWithHost := parts[1]
+		// Remove host part
+		hostParts := strings.SplitN(pathWithHost, "/", 2)
+		if len(hostParts) < 2 {
+			return nil
+		}
+		pathParts := strings.Split(strings.Trim(hostParts[1], "/"), "/")
+		if len(pathParts) < 2 {
+			return nil
+		}
+		owner = pathParts[0]
+		repo = pathParts[1]
+	} else if strings.Contains(urlStr, "bitbucket") {
+		provider = "bitbucket"
+		parts := strings.SplitN(urlStr, "://", 2)
+		if len(parts) < 2 {
+			return nil
+		}
+		pathWithHost := parts[1]
+		hostParts := strings.SplitN(pathWithHost, "/", 2)
+		if len(hostParts) < 2 {
+			return nil
+		}
+		pathParts := strings.Split(strings.Trim(hostParts[1], "/"), "/")
+		if len(pathParts) < 2 {
+			return nil
+		}
+		owner = pathParts[0]
+		repo = pathParts[1]
+	} else {
+		return nil
+	}
+
+	fullName := owner + "/" + repo
+	cloneURL := urlStr
+	if !strings.HasSuffix(cloneURL, ".git") {
+		cloneURL += ".git"
+	}
+
+	return &scan.DiscoveredRepository{
+		Provider:  provider,
+		Name:      repo,
+		FullName:  fullName,
+		URL:       cloneURL,
+		IsPrivate: false, // Assume public, will be determined on scan
+		Source:    "manual",
+	}
 }
 
 func (m Model) filterReposByTab() []scan.DiscoveredRepository {
@@ -218,6 +328,41 @@ func (m Model) filterReposByTab() []scan.DiscoveredRepository {
 }
 
 func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle add repo URL mode
+	if m.addingRepoURL {
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.addingRepoURL = false
+			m.repoURLInput = ""
+			return m, nil
+		case tea.KeyEnter:
+			// Parse the URL and add to repos list
+			if m.repoURLInput != "" {
+				repo := m.parseRepoURL(m.repoURLInput)
+				if repo != nil {
+					m.repos = append([]scan.DiscoveredRepository{*repo}, m.repos...)
+					m.repoListIndex = 0
+					m.statusMsg = "Added: " + repo.FullName
+				} else {
+					m.statusMsg = "Invalid URL format"
+				}
+			}
+			m.addingRepoURL = false
+			m.repoURLInput = ""
+			return m, nil
+		case tea.KeyBackspace:
+			if len(m.repoURLInput) > 0 {
+				m.repoURLInput = m.repoURLInput[:len(m.repoURLInput)-1]
+			}
+			return m, nil
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.repoURLInput += string(msg.Runes)
+			}
+			return m, nil
+		}
+	}
+
 	// Handle search mode input
 	if m.searching {
 		switch msg.Type {
@@ -246,6 +391,10 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	filteredRepos := m.filterReposByTab()
 
 	switch {
+	case key.Matches(msg, m.keys.AddRepoURL):
+		m.addingRepoURL = true
+		m.repoURLInput = ""
+		return m, nil
 	case key.Matches(msg, m.keys.Search):
 		m.searching = true
 		return m, nil
@@ -273,11 +422,21 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.SelectNone):
 		m.selected = make(map[int]bool)
 	case key.Matches(msg, m.keys.Tab):
+		oldTab := m.tabIndex
 		m.tabIndex = (m.tabIndex + 1) % 4
 		m.repoListIndex = 0
+		// Reload repos if tab changed and we're switching to/from a specific provider
+		if oldTab != m.tabIndex {
+			return m.reloadIfNeeded()
+		}
 	case key.Matches(msg, m.keys.ShiftTab):
+		oldTab := m.tabIndex
 		m.tabIndex = (m.tabIndex + 3) % 4 // +3 is same as -1 mod 4
 		m.repoListIndex = 0
+		// Reload repos if tab changed
+		if oldTab != m.tabIndex {
+			return m.reloadIfNeeded()
+		}
 	case key.Matches(msg, m.keys.Refresh):
 		m.repoLoadCount = 0 // Reset pagination on refresh
 		m.hasMoreRepos = true
@@ -332,11 +491,6 @@ func (m Model) viewScan() string {
 
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Scanning..."))
 	b.WriteString("\n\n")
-
-	if m.statusMsg != "" {
-		b.WriteString(SubtleStyle.Render(m.statusMsg))
-		b.WriteString("\n\n")
-	}
 
 	b.WriteString(m.spinner.View() + " Running security scans...")
 	b.WriteString("\n\n")
