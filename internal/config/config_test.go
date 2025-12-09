@@ -16,10 +16,10 @@ const (
 
 func TestLoadWithConfigFile(t *testing.T) {
 	// Set up environment variables for substitution
-	os.Setenv("TEST_GITLAB_TOKEN", "glpat-test123")
-	os.Setenv("TEST_GITHUB_TOKEN", "ghp-test456")
-	defer os.Unsetenv("TEST_GITLAB_TOKEN")
-	defer os.Unsetenv("TEST_GITHUB_TOKEN")
+	_ = os.Setenv("TEST_GITLAB_TOKEN", "glpat-test123")
+	_ = os.Setenv("TEST_GITHUB_TOKEN", "ghp-test456")
+	defer func() { _ = os.Unsetenv("TEST_GITLAB_TOKEN") }()
+	defer func() { _ = os.Unsetenv("TEST_GITHUB_TOKEN") }()
 
 	// Load config from example file
 	cfg, err := Load("../../config.example.yaml")

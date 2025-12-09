@@ -63,11 +63,7 @@ func (c *Client) ListProjects(ctx context.Context, limit int) ([]Project, error)
 		},
 	}
 
-	for {
-		if limit > 0 && len(allProjects) >= limit {
-			break
-		}
-
+	for limit <= 0 || len(allProjects) < limit {
 		if err := c.limiter.Wait(ctx); err != nil {
 			return []Project{}, err
 		}

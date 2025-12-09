@@ -184,18 +184,22 @@ jobs:
           # =====================================================
           # DOGFOODING: Use SecureLens to scan itself!
           # This runs our own CLI tool in standalone mode
+          # Using --local-path to scan the already checked-out code
+          # (no cloning needed - avoids auth issues with private repos)
           # =====================================================
 
           echo "=== Running SecureLens Standalone Scan ==="
           echo "Repository: https://github.com/${{ github.repository }}"
           echo "Branch: ${{ github.head_ref || github.ref_name }}"
           echo "Commit: ${{ github.sha }}"
+          echo "Local Path: $(pwd)"
 
           mkdir -p reports
 
           # Run SecureLens in standalone mode with debug output
-          # This uses OpenGrep, Trivy, and Trufflehog under the hood
-          ./securelens scan repo "https://github.com/${{ github.repository }}" \
+          # Using --local-path to scan current directory (already checked out by actions/checkout)
+          ./securelens scan repo \
+            --local-path . \
             --branch "${{ github.head_ref || github.ref_name }}" \
             --commit "${{ github.sha }}" \
             --mode standalone \
@@ -203,7 +207,8 @@ jobs:
             2>&1 | tee reports/securelens-output.log || true
 
           # Also capture just the table output for cleaner logs
-          ./securelens scan repo "https://github.com/${{ github.repository }}" \
+          ./securelens scan repo \
+            --local-path . \
             --branch "${{ github.head_ref || github.ref_name }}" \
             --commit "${{ github.sha }}" \
             --mode standalone \
@@ -410,7 +415,7 @@ jobs:
             COMMENT+="<details>\n<summary>View detailed results</summary>\n\n"
             COMMENT+="Download the \`securelens-scan-results\` artifact for full details, or run locally:\n"
             COMMENT+="\`\`\`bash\n"
-            COMMENT+="./securelens scan repo . --mode standalone --debug\n"
+            COMMENT+="./securelens scan repo --local-path . --mode standalone --debug\n"
             COMMENT+="./securelens scan results reports/*/latest.json --details\n"
             COMMENT+="\`\`\`\n"
             COMMENT+="</details>\n\n"

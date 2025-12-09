@@ -92,6 +92,7 @@ ci: fmt vet test
 	@echo "$(GREEN)All CI checks passed!$(NC)"
 
 # Security scan - dogfood SecureLens on itself (mirrors CI security-scan job)
+# Uses main branch by default since local branches may not exist on remote
 security-scan: build
 	@echo "$(GREEN)Running SecureLens security scan (dogfooding)...$(NC)"
 	@echo ""
@@ -102,18 +103,15 @@ security-scan: build
 	@test -d "$(ASSETS_DIR)/opengrep-rules" || { echo "$(RED)Error: opengrep-rules not found. Run: make install_opengrep_rules$(NC)"; exit 1; }
 	@echo "$(GREEN)All scanner tools found$(NC)"
 	@echo ""
-	@# Get repo info from git
+	@# Get repo info from git (use main branch for remote scan)
 	$(eval REPO_URL := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//' | sed 's/git@github.com:/https:\/\/github.com\//'))
-	$(eval BRANCH := $(shell git rev-parse --abbrev-ref HEAD))
-	$(eval COMMIT := $(shell git rev-parse HEAD))
+	$(eval BRANCH := main)
 	@echo "Repository: $(REPO_URL)"
 	@echo "Branch:     $(BRANCH)"
-	@echo "Commit:     $(COMMIT)"
 	@echo ""
 	@# Run SecureLens standalone scan
 	./$(BINARY_NAME) scan repo "$(REPO_URL)" \
 		--branch "$(BRANCH)" \
-		--commit "$(COMMIT)" \
 		--mode standalone \
 		--debug
 
@@ -124,8 +122,18 @@ security-scan-quick: build
 	@command -v trivy >/dev/null 2>&1 || { echo "$(RED)Error: trivy not installed$(NC)"; exit 1; }
 	@command -v trufflehog >/dev/null 2>&1 || { echo "$(RED)Error: trufflehog not installed$(NC)"; exit 1; }
 	$(eval REPO_URL := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//' | sed 's/git@github.com:/https:\/\/github.com\//'))
-	$(eval BRANCH := $(shell git rev-parse --abbrev-ref HEAD))
-	./$(BINARY_NAME) scan repo "$(REPO_URL)" --branch "$(BRANCH)" --mode standalone
+	./$(BINARY_NAME) scan repo "$(REPO_URL)" --branch main --mode standalone
+
+# Security scan on a specific branch (for testing before push)
+# Usage: make security-scan-branch BRANCH=feature-branch
+BRANCH ?= main
+security-scan-branch: build
+	@echo "$(GREEN)Running security scan on branch: $(BRANCH)...$(NC)"
+	@command -v opengrep >/dev/null 2>&1 || { echo "$(RED)Error: opengrep not installed$(NC)"; exit 1; }
+	@command -v trivy >/dev/null 2>&1 || { echo "$(RED)Error: trivy not installed$(NC)"; exit 1; }
+	@command -v trufflehog >/dev/null 2>&1 || { echo "$(RED)Error: trufflehog not installed$(NC)"; exit 1; }
+	$(eval REPO_URL := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//' | sed 's/git@github.com:/https:\/\/github.com\//'))
+	./$(BINARY_NAME) scan repo "$(REPO_URL)" --branch "$(BRANCH)" --mode standalone --debug
 
 # View latest scan results
 security-results:
@@ -155,8 +163,9 @@ help:
 	@echo "  make clean                        - Clean build artifacts"
 	@echo ""
 	@echo "Security scanning (dogfooding):"
-	@echo "  make security-scan                - Run full security scan (mirrors CI)"
-	@echo "  make security-scan-quick          - Quick scan without debug output"
+	@echo "  make security-scan                - Run full security scan on main (mirrors CI)"
+	@echo "  make security-scan-quick          - Quick scan on main without debug output"
+	@echo "  make security-scan-branch BRANCH=x - Scan specific branch"
 	@echo "  make security-results             - View latest scan results with details"
 	@echo ""
 	@echo "Standalone scanner installation:"

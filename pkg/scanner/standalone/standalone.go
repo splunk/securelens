@@ -341,8 +341,8 @@ func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]in
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	slog.Info("Running opengrep scan",
 		"rules_path", rulesPath,
