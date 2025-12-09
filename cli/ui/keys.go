@@ -26,6 +26,7 @@ type KeyMap struct {
 	SelectNone key.Binding
 	Refresh    key.Binding
 	LoadMore   key.Binding
+	AddRepoURL key.Binding
 
 	// View jumping
 	GoHome    key.Binding
@@ -117,6 +118,10 @@ func DefaultKeyMap() KeyMap {
 		LoadMore: key.NewBinding(
 			key.WithKeys("m", "ctrl+m"),
 			key.WithHelp("m", "load more"),
+		),
+		AddRepoURL: key.NewBinding(
+			key.WithKeys("+", "u"),
+			key.WithHelp("+/u", "add repo URL"),
 		),
 
 		// View jumping

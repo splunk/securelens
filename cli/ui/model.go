@@ -48,11 +48,14 @@ type Model struct {
 	tabIndex      int    // for provider tabs: 0=All, 1=GitHub, 2=GitLab, 3=Bitbucket
 	searchFilter  string // Substring search filter for repos
 	searching     bool   // Whether we're in search mode
+	addingRepoURL bool   // Whether we're in "add repo URL" mode
+	repoURLInput  string // The URL being typed
 
 	// Pagination
-	repoPageSize  int  // Number of repos to load per page (default 50)
-	hasMoreRepos  bool // Whether there are more repos to load
-	repoLoadCount int  // Total repos requested so far
+	repoPageSize   int    // Number of repos to load per page (default 50)
+	hasMoreRepos   bool   // Whether there are more repos to load
+	repoLoadCount  int    // Total repos requested so far
+	loadedProvider string // The provider filter used to load current repos ("" for all)
 
 	// Wizard state (used by wizard views - nolint to allow implementation)
 	wizardStep     int    //nolint:unused // Current wizard step (0=select provider, 1=show instructions)
@@ -168,6 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.statusMsg = ""
 		m.repoLoadCount = msg.Limit
+		m.loadedProvider = msg.Provider
 		// If we got fewer repos than requested, there are no more to load
 		m.hasMoreRepos = len(msg.Repos) >= msg.Limit
 
@@ -285,16 +289,38 @@ func repeatChar(char string, count int) string {
 	return result
 }
 
-// loadRepos returns a command to load repositories with pagination
+// getProviderFilter returns the provider name for the current tab
+func (m Model) getProviderFilter() string {
+	switch m.tabIndex {
+	case 1:
+		return "github"
+	case 2:
+		return "gitlab"
+	case 3:
+		return "bitbucket"
+	default:
+		return "" // All providers
+	}
+}
+
+// loadRepos returns a command to load repositories with pagination and provider filtering
 func (m Model) loadRepos() tea.Cmd {
 	limit := m.repoLoadCount + m.repoPageSize
+	provider := m.getProviderFilter()
 	return func() tea.Msg {
 		ctx := context.Background()
-		repos, err := scan.DiscoverRepositories(ctx, m.config, limit, false)
+
+		// Filter config by provider if a specific tab is selected
+		cfg := m.config
+		if provider != "" {
+			cfg = scan.FilterConfigByProvider(m.config, provider)
+		}
+
+		repos, err := scan.DiscoverRepositories(ctx, cfg, limit, false)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
-		return ReposLoadedMsg{Repos: repos, Limit: limit}
+		return ReposLoadedMsg{Repos: repos, Limit: limit, Provider: provider}
 	}
 }
 
