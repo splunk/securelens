@@ -4,12 +4,12 @@ A CLI-based vulnerability scanning tool that aggregates results from multiple se
 
 ## Features
 
-- **Multi-Scanner Support**: Run OpenGrep (SAST), Trivy (dependencies/vulnerabilities), and Trufflehog (secrets) in parallel
+- **SRS Integration**: Offload scanning to SRS (Scan Request Service) API for managed scanning infrastructure
 - **Standalone Mode**: Run scans locally without external API dependencies
-- **Parallel Execution**: Scanners run concurrently using goroutines for faster results
+- **Multi-Scanner Support**: Semgrep/OpenGrep (SAST), FOSSA/Trivy (dependencies), and Trufflehog (secrets)
+- **Parallel Execution**: Scanners run concurrently for faster results
 - **Organized Reports**: Results saved in `reports/{owner}/{repo}/{branch}/{commit}/` structure
 - **Multiple Output Formats**: Table, JSON, and YAML output support
-- **Severity Breakdown**: Findings categorized by severity (Critical, High, Medium, Low, Info)
 
 ## Quick Start
 
@@ -21,38 +21,60 @@ cd securelens
 go build -o securelens .
 ```
 
-### 2. Install Scanner Binaries
+### 2. Run a Scan
 
-SecureLens requires local scanner binaries for standalone mode:
+#### Option A: Remote Mode (Recommended) - Using SRS API
+
+The recommended approach is to use SRS (Scan Request Service) which handles scanning infrastructure:
+
+```bash
+# Set your SRS API endpoint
+export SRS_ORCHESTRATOR_API_ENDPOINT="https://your-srs-instance.example.com"
+
+# Run scan via SRS
+./securelens scan repo https://github.com/org/repo --mode remote --srs-url ${SRS_ORCHESTRATOR_API_ENDPOINT}
+```
+
+SRS will:
+1. Receive the repository zip
+2. Run Semgrep (SAST), FOSSA (dependencies), and Trufflehog (secrets)
+3. Return aggregated results
+
+#### Option B: Standalone Mode - Local Scanner Binaries
+
+For local scanning without SRS, install scanner binaries:
 
 ```bash
 # Install all scanners to ~/.local/bin
 make install_scanners INSTALL_DIR=~/.local/bin
 
-# Or install individually
-make install_opengrep INSTALL_DIR=~/.local/bin
-make install_trivy INSTALL_DIR=~/.local/bin
-make install_trufflehog INSTALL_DIR=~/.local/bin
-```
-
-Ensure `~/.local/bin` is in your PATH:
-```bash
+# Ensure ~/.local/bin is in your PATH
 export PATH="$HOME/.local/bin:$PATH"
+
+# Verify installation
+opengrep --version && trivy --version && trufflehog --version
+
+# Run standalone scan
+./securelens scan repo https://github.com/org/repo --mode standalone
 ```
 
-### 3. Verify Installation
+## Scan Modes
 
-```bash
-opengrep --version
-trivy --version
-trufflehog --version
-```
+| Mode | Flag | Description |
+|------|------|-------------|
+| **Remote** | `--mode remote` | Send repo to SRS API (Semgrep, FOSSA, Trufflehog) |
+| **Standalone** | `--mode standalone` | Run local binaries (OpenGrep, Trivy, Trufflehog) |
+| **Local** | `--mode local` | Run configured local scanners (requires config) |
 
 ## Running Scans
 
-### Basic Standalone Scan
+### Remote Scan (via SRS)
 
-Scan a repository using local scanner binaries:
+```bash
+./securelens scan repo https://github.com/org/repo --mode remote --srs-url ${SRS_ORCHESTRATOR_API_ENDPOINT}
+```
+
+### Standalone Scan (local binaries)
 
 ```bash
 ./securelens scan repo https://github.com/org/repo --mode standalone
