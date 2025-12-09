@@ -270,6 +270,7 @@ Supports single repository scanning, bulk scanning, and discovery scanning.`,
 	cmd.AddCommand(newRepoCmd())
 	cmd.AddCommand(newBulkCmd())
 	cmd.AddCommand(newDiscoverCmd())
+	cmd.AddCommand(newResultsCmd())
 
 	return cmd
 }
@@ -297,6 +298,7 @@ type RepoScanOptions struct {
 	DryRun       bool
 	Verbose      bool
 	Debug        bool     // Enable debug mode with raw report output
+	Parallel     bool     // Run scanners in parallel (standalone mode)
 	SRSURL       string   // SRS API endpoint URL
 	Async        bool     // Return immediately without waiting for results
 	WaitFor      []string // Job status URLs to wait on (skip scanning)
@@ -419,6 +421,7 @@ Examples:
 	// Mode flags
 	cmd.Flags().StringVar((*string)(&opts.Mode), "mode", "local", "scan mode: local, remote (SRS API), or standalone (local binaries)")
 	cmd.Flags().StringVar(&opts.AssetsDir, "assets-dir", "assets", "directory containing scanner assets (e.g., opengrep rules)")
+	cmd.Flags().BoolVar(&opts.Parallel, "parallel", true, "run scanners in parallel using goroutines (standalone mode)")
 
 	// SRS flags
 	cmd.Flags().StringVar(&opts.SRSURL, "srs-url", "", "SRS API endpoint URL (e.g., https://srs.example.com/api/v1/orchestrator/job_submit)")
@@ -513,10 +516,17 @@ func runRepoScan(ctx context.Context, opts *RepoScanOptions) error {
 		"commit", repoInfo.Commit,
 	)
 
-	// Determine scanners to run
+	// Determine scanners to run based on mode
 	scanners := opts.Scanners
 	if len(scanners) == 0 {
-		scanners = []string{"fossa", "semgrep", "trufflehog"}
+		switch opts.Mode {
+		case ScanModeStandalone:
+			// Standalone mode uses local binaries: opengrep, trivy, trufflehog
+			scanners = []string{"opengrep", "trivy", "trufflehog"}
+		default:
+			// Remote/Local mode uses SRS scanners: fossa, semgrep, trufflehog
+			scanners = []string{"fossa", "semgrep", "trufflehog"}
+		}
 	}
 
 	if opts.DryRun {
@@ -803,8 +813,9 @@ func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *re
 
 	slog.Info("Repository cloned", "path", cloneResult.Path, "branch", cloneResult.Branch, "commit", cloneResult.CommitHash)
 
-	// Run standalone scanners
-	standaloneResults, err := standalone.RunStandaloneScans(ctx, cloneResult.Path, standaloneTypes, opts.AssetsDir)
+	// Run standalone scanners (parallel by default)
+	slog.Info("Running scanners", "parallel", opts.Parallel, "scanners", standaloneTypes)
+	standaloneResults, err := standalone.RunStandaloneScansParallel(ctx, cloneResult.Path, standaloneTypes, opts.AssetsDir, opts.Parallel)
 	if err != nil {
 		return nil, fmt.Errorf("standalone scan failed: %w", err)
 	}
@@ -837,8 +848,44 @@ func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *re
 	return report, nil
 }
 
+// buildReportPath creates the commit-based report directory structure:
+// reports/{owner}/{repo}/{branch}/{commit}/
+func buildReportPath(baseDir string, report *ScanReport) string {
+	// Parse the repository URL to extract owner/repo
+	repoURL := report.Repository
+	owner := "unknown"
+	repo := "unknown"
+
+	// Try to extract from URL
+	// Handle: https://github.com/owner/repo, https://gitlab.com/owner/repo, etc.
+	parts := strings.Split(strings.TrimSuffix(repoURL, ".git"), "/")
+	if len(parts) >= 2 {
+		repo = parts[len(parts)-1]
+		owner = parts[len(parts)-2]
+	}
+
+	branch := report.Branch
+	if branch == "" {
+		branch = "default"
+	}
+	// Sanitize branch name (replace / with -)
+	branch = strings.ReplaceAll(branch, "/", "-")
+
+	commit := report.Commit
+	if commit == "" {
+		commit = "unknown"
+	}
+	// Use short commit hash
+	if len(commit) > 8 {
+		commit = commit[:8]
+	}
+
+	return filepath.Join(baseDir, owner, repo, branch, commit)
+}
+
 func writeDebugOutput(report *ScanReport, standaloneResults map[string]*standalone.StandaloneScanResult, opts *RepoScanOptions) error {
-	debugDir := filepath.Join(opts.OutputDir, "debug")
+	// Build commit-based directory structure
+	debugDir := buildReportPath(opts.OutputDir, report)
 	if err := os.MkdirAll(debugDir, 0755); err != nil {
 		return fmt.Errorf("failed to create debug directory: %w", err)
 	}
@@ -856,6 +903,13 @@ func writeDebugOutput(report *ScanReport, standaloneResults map[string]*standalo
 	}
 	slog.Info("Debug report written", "path", reportPath)
 
+	// Also write a "latest.json" symlink/copy for easy access
+	latestPath := filepath.Join(debugDir, "latest.json")
+	_ = os.Remove(latestPath) // Remove existing
+	if err := os.WriteFile(latestPath, reportData, 0644); err != nil {
+		slog.Warn("Failed to write latest report", "error", err)
+	}
+
 	// Write raw scanner outputs
 	for name, result := range standaloneResults {
 		rawPath := filepath.Join(debugDir, fmt.Sprintf("%s-raw-%s.json", name, timestamp))
@@ -869,8 +923,14 @@ func writeDebugOutput(report *ScanReport, standaloneResults map[string]*standalo
 			continue
 		}
 		slog.Info("Debug raw output written", "scanner", name, "path", rawPath)
+
+		// Also write latest for each scanner
+		latestRawPath := filepath.Join(debugDir, fmt.Sprintf("%s-latest.json", name))
+		_ = os.Remove(latestRawPath)
+		_ = os.WriteFile(latestRawPath, rawData, 0644)
 	}
 
+	slog.Info("Reports saved to", "directory", debugDir)
 	return nil
 }
 
@@ -1132,40 +1192,120 @@ func outputScanTable(report *ScanReport, outputFile string) error {
 
 	// Print scanner results
 	table := tablewriter.NewWriter(writer)
-	table.Header([]string{"Scanner", "Status", "Findings"})
+	table.Header([]string{"Scanner", "Status", "Findings", "By Severity"})
 
 	for _, scanner := range report.Scanners {
 		result, ok := report.Results[scanner].(map[string]interface{})
 		status := "unknown"
 		findings := "-"
+		severityStr := "-"
 
 		if ok {
 			if s, exists := result["status"]; exists {
 				status = fmt.Sprintf("%v", s)
 			}
-			// Count findings based on scanner type
-			if vulns, exists := result["vulnerabilities"]; exists {
-				if arr, ok := vulns.([]interface{}); ok {
-					findings = fmt.Sprintf("%d vulnerabilities", len(arr))
-				}
-			} else if f, exists := result["findings"]; exists {
-				if arr, ok := f.([]interface{}); ok {
-					findings = fmt.Sprintf("%d findings", len(arr))
-				}
-			} else if secrets, exists := result["secrets"]; exists {
-				if arr, ok := secrets.([]interface{}); ok {
-					findings = fmt.Sprintf("%d secrets", len(arr))
-				}
-			}
+
+			// Get findings count - check multiple possible keys
+			findings = extractFindingsCount(result)
+
+			// Get severity breakdown
+			severityStr = extractSeveritySummary(result)
 		}
 
-		table.Append([]string{scanner, status, findings})
+		table.Append([]string{scanner, status, findings, severityStr})
 	}
 
 	table.Render()
 	fmt.Fprintln(writer)
 
 	return nil
+}
+
+// extractFindingsCount extracts the findings count from various result formats
+func extractFindingsCount(result map[string]interface{}) string {
+	// Try findings_count (standalone opengrep, trufflehog)
+	if count, exists := result["findings_count"]; exists {
+		return fmt.Sprintf("%v findings", count)
+	}
+
+	// Try vulnerabilities_count (standalone trivy)
+	if count, exists := result["vulnerabilities_count"]; exists {
+		return fmt.Sprintf("%v vulnerabilities", count)
+	}
+
+	// Try counting findings array
+	if findings, exists := result["findings"]; exists {
+		if arr, ok := findings.([]interface{}); ok {
+			return fmt.Sprintf("%d findings", len(arr))
+		}
+	}
+
+	// Try counting vulnerabilities array
+	if vulns, exists := result["vulnerabilities"]; exists {
+		if arr, ok := vulns.([]interface{}); ok {
+			return fmt.Sprintf("%d vulnerabilities", len(arr))
+		}
+	}
+
+	// Try counting secrets array
+	if secrets, exists := result["secrets"]; exists {
+		if arr, ok := secrets.([]interface{}); ok {
+			return fmt.Sprintf("%d secrets", len(arr))
+		}
+	}
+
+	// Try verified/unverified secrets (trufflehog)
+	verified, hasVerified := result["verified_secrets"]
+	unverified, hasUnverified := result["unverified_secrets"]
+	if hasVerified || hasUnverified {
+		v := toInt(verified)
+		u := toInt(unverified)
+		if v+u > 0 {
+			return fmt.Sprintf("%d secrets (%d verified)", v+u, v)
+		}
+		return "0 secrets"
+	}
+
+	return "-"
+}
+
+// extractSeveritySummary extracts severity breakdown from results
+func extractSeveritySummary(result map[string]interface{}) string {
+	if bySev, exists := result["by_severity"]; exists {
+		if sevMap, ok := bySev.(map[string]interface{}); ok {
+			if len(sevMap) == 0 {
+				return "-"
+			}
+			parts := []string{}
+			// Order by severity
+			for _, sev := range []string{"CRITICAL", "HIGH", "ERROR", "MEDIUM", "WARNING", "LOW", "INFO"} {
+				if count, exists := sevMap[sev]; exists {
+					parts = append(parts, fmt.Sprintf("%s:%v", sev[:1], count))
+				}
+			}
+			if len(parts) > 0 {
+				return strings.Join(parts, " ")
+			}
+		}
+	}
+	return "-"
+}
+
+// toInt converts interface{} to int safely
+func toInt(v interface{}) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	case string:
+		if i, err := fmt.Sscanf(n, "%d"); err == nil {
+			return i
+		}
+	}
+	return 0
 }
 
 func newBulkCmd() *cobra.Command {
@@ -1475,4 +1615,316 @@ func checkBitbucketRepoAccess(ctx context.Context, configs []config.BitbucketCon
 	}
 
 	slog.Info("Repository not found or not accessible with current Bitbucket credentials\n.")
+}
+
+// newResultsCmd creates the results command for viewing saved scan reports
+func newResultsCmd() *cobra.Command {
+	var (
+		reportsDir string
+		format     string
+		showDetails bool
+		scanner    string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "results [report-path]",
+		Short: "View saved scan results",
+		Long: `View and analyze saved scan results from previous scans.
+
+Reports are stored in: reports/{owner}/{repo}/{branch}/{commit}/
+
+Examples:
+  # View latest results from a specific path
+  securelens scan results reports/splunk/securelens/main/abc123/latest.json
+
+  # List all available reports
+  securelens scan results --list
+
+  # Show detailed findings for a specific scanner
+  securelens scan results reports/splunk/securelens/main/abc123/latest.json --details --scanner opengrep`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			listReports, _ := cmd.Flags().GetBool("list")
+
+			if listReports {
+				return listSavedReports(reportsDir)
+			}
+
+			if len(args) == 0 {
+				return fmt.Errorf("report path required (or use --list to see available reports)")
+			}
+
+			return viewReport(args[0], format, showDetails, scanner)
+		},
+	}
+
+	cmd.Flags().StringVar(&reportsDir, "reports-dir", "reports", "directory containing saved reports")
+	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
+	cmd.Flags().BoolVar(&showDetails, "details", false, "show detailed findings")
+	cmd.Flags().StringVar(&scanner, "scanner", "", "filter findings by scanner (opengrep, trivy, trufflehog)")
+	cmd.Flags().Bool("list", false, "list available reports")
+
+	return cmd
+}
+
+func listSavedReports(reportsDir string) error {
+	fmt.Printf("\n=== Available Scan Reports ===\n\n")
+	fmt.Printf("Reports directory: %s\n\n", reportsDir)
+
+	// Walk the reports directory
+	var reports []string
+	err := filepath.Walk(reportsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip errors
+		}
+		if !info.IsDir() && strings.HasSuffix(path, "latest.json") {
+			relPath, _ := filepath.Rel(reportsDir, path)
+			reports = append(reports, relPath)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to walk reports directory: %w", err)
+	}
+
+	if len(reports) == 0 {
+		fmt.Println("No reports found.")
+		fmt.Println("\nRun a scan with --debug to save reports:")
+		fmt.Println("  securelens scan repo https://github.com/org/repo --mode standalone --debug")
+		return nil
+	}
+
+	fmt.Printf("Found %d report(s):\n\n", len(reports))
+	for _, report := range reports {
+		// Extract repo info from path: owner/repo/branch/commit/latest.json
+		parts := strings.Split(report, string(os.PathSeparator))
+		if len(parts) >= 4 {
+			owner := parts[0]
+			repo := parts[1]
+			branch := parts[2]
+			commit := parts[3]
+			fmt.Printf("  %s/%s [%s @ %s]\n", owner, repo, branch, commit)
+			fmt.Printf("    Path: %s\n\n", filepath.Join(reportsDir, report))
+		} else {
+			fmt.Printf("  %s\n", report)
+		}
+	}
+
+	return nil
+}
+
+func viewReport(reportPath string, format string, showDetails bool, scannerFilter string) error {
+	// Read the report file
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		return fmt.Errorf("failed to read report: %w", err)
+	}
+
+	var report ScanReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		return fmt.Errorf("failed to parse report: %w", err)
+	}
+
+	switch format {
+	case "json":
+		output, _ := json.MarshalIndent(report, "", "  ")
+		fmt.Println(string(output))
+		return nil
+	case "yaml":
+		output, _ := yaml.Marshal(report)
+		fmt.Println(string(output))
+		return nil
+	}
+
+	// Table format
+	fmt.Printf("\n=== SecureLens Scan Report ===\n\n")
+	fmt.Printf("Repository: %s\n", report.Repository)
+	fmt.Printf("Branch:     %s\n", report.Branch)
+	fmt.Printf("Commit:     %s\n", report.Commit)
+	fmt.Printf("Timestamp:  %s\n", report.Timestamp)
+	fmt.Printf("Status:     %s\n\n", report.Status)
+
+	// Summary table
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header([]string{"Scanner", "Status", "Findings", "By Severity"})
+
+	for _, scanner := range report.Scanners {
+		if scannerFilter != "" && scanner != scannerFilter {
+			continue
+		}
+		result, ok := report.Results[scanner].(map[string]interface{})
+		status := "unknown"
+		findings := "-"
+		severityStr := "-"
+
+		if ok {
+			if s, exists := result["status"]; exists {
+				status = fmt.Sprintf("%v", s)
+			}
+			findings = extractFindingsCount(result)
+			severityStr = extractSeveritySummary(result)
+		}
+
+		table.Append([]string{scanner, status, findings, severityStr})
+	}
+
+	table.Render()
+
+	// Show detailed findings if requested
+	if showDetails {
+		fmt.Println()
+		for _, scanner := range report.Scanners {
+			if scannerFilter != "" && scanner != scannerFilter {
+				continue
+			}
+			result, ok := report.Results[scanner].(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			printDetailedFindings(scanner, result)
+		}
+	}
+
+	return nil
+}
+
+func printDetailedFindings(scanner string, result map[string]interface{}) {
+	fmt.Printf("\n=== %s Findings ===\n\n", strings.ToUpper(scanner))
+
+	findings, hasFindings := result["findings"].([]interface{})
+	if !hasFindings || len(findings) == 0 {
+		fmt.Println("No findings to display.")
+		return
+	}
+
+	// Limit to first 20 findings
+	displayCount := len(findings)
+	if displayCount > 20 {
+		displayCount = 20
+	}
+
+	table := tablewriter.NewWriter(os.Stdout)
+
+	switch scanner {
+	case "opengrep":
+		table.Header([]string{"#", "Severity", "Rule", "File", "Line", "Message"})
+		for i, f := range findings[:displayCount] {
+			finding, ok := f.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			severity := "-"
+			message := "-"
+			checkID := "-"
+			path := "-"
+			line := "-"
+
+			if extra, ok := finding["extra"].(map[string]interface{}); ok {
+				if s, ok := extra["severity"].(string); ok {
+					severity = s
+				}
+				if m, ok := extra["message"].(string); ok {
+					message = truncate(m, 50)
+				}
+			}
+			if c, ok := finding["check_id"].(string); ok {
+				checkID = truncate(c, 30)
+			}
+			if p, ok := finding["path"].(string); ok {
+				path = truncate(filepath.Base(p), 25)
+			}
+			if start, ok := finding["start"].(map[string]interface{}); ok {
+				if l, ok := start["line"].(float64); ok {
+					line = fmt.Sprintf("%d", int(l))
+				}
+			}
+			table.Append([]string{fmt.Sprintf("%d", i+1), severity, checkID, path, line, message})
+		}
+
+	case "trivy":
+		table.Header([]string{"#", "Severity", "CVE", "Package", "Version", "Fixed"})
+		if results, ok := result["results"].([]interface{}); ok {
+			count := 0
+			for _, r := range results {
+				res, ok := r.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				vulns, ok := res["Vulnerabilities"].([]interface{})
+				if !ok {
+					continue
+				}
+				for _, v := range vulns {
+					if count >= displayCount {
+						break
+					}
+					vuln, ok := v.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					count++
+					table.Append([]string{
+						fmt.Sprintf("%d", count),
+						getString(vuln, "Severity"),
+						truncate(getString(vuln, "VulnerabilityID"), 20),
+						truncate(getString(vuln, "PkgName"), 20),
+						truncate(getString(vuln, "InstalledVersion"), 15),
+						truncate(getString(vuln, "FixedVersion"), 15),
+					})
+				}
+			}
+		}
+
+	case "trufflehog":
+		table.Header([]string{"#", "Verified", "Detector", "File", "Line"})
+		for i, f := range findings[:displayCount] {
+			finding, ok := f.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			verified := "No"
+			if v, ok := finding["Verified"].(bool); ok && v {
+				verified = "Yes"
+			}
+			detector := getString(finding, "DetectorName")
+			file := "-"
+			line := "-"
+
+			if sm, ok := finding["SourceMetadata"].(map[string]interface{}); ok {
+				if data, ok := sm["Data"].(map[string]interface{}); ok {
+					if git, ok := data["Git"].(map[string]interface{}); ok {
+						if f, ok := git["file"].(string); ok {
+							file = truncate(filepath.Base(f), 30)
+						}
+						if l, ok := git["line"].(float64); ok {
+							line = fmt.Sprintf("%d", int(l))
+						}
+					}
+				}
+			}
+			table.Append([]string{fmt.Sprintf("%d", i+1), verified, detector, file, line})
+		}
+	}
+
+	table.Render()
+
+	if len(findings) > displayCount {
+		fmt.Printf("\n... and %d more findings (showing first %d)\n", len(findings)-displayCount, displayCount)
+	}
+}
+
+func getString(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return "-"
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
