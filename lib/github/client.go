@@ -60,16 +60,28 @@ type Repository struct {
 func (c *Client) ListRepositories(ctx context.Context, owner string, limit int) ([]Repository, error) {
 	slog.Info("Listing GitHub repositories", "apiURL", c.apiURL, "owner", owner, "limit", limit)
 
-	var allRepos []Repository
-
 	// Use different pagination options based on whether we're listing by user/org or authenticated user
 	if owner == "" {
 		// List authenticated user's repositories
 		return c.listAuthenticatedUserRepos(ctx, limit)
 	}
 
-	// List by specific user or organization
-	options := &github.RepositoryListByUserOptions{
+	// Try to list by organization first (most common case for configured orgs)
+	repos, err := c.listByOrg(ctx, owner, limit)
+	if err != nil {
+		// Fall back to listing by user if org listing fails
+		slog.Debug("Organization listing failed, trying user listing", "owner", owner, "error", err)
+		return c.listByUser(ctx, owner, limit)
+	}
+	return repos, nil
+}
+
+// listByOrg lists repositories for an organization
+func (c *Client) listByOrg(ctx context.Context, org string, limit int) ([]Repository, error) {
+	var allRepos []Repository
+
+	options := &github.RepositoryListByOrgOptions{
+		Type: "all", // Get all repos (public, private, forks, sources, etc.)
 		ListOptions: github.ListOptions{
 			Page:    1,
 			PerPage: 100,
@@ -78,18 +90,12 @@ func (c *Client) ListRepositories(ctx context.Context, owner string, limit int) 
 
 	for limit <= 0 || len(allRepos) < limit {
 		if err := c.limiter.Wait(ctx); err != nil {
-			return []Repository{}, err
+			return nil, err
 		}
 
-		var repos []*github.Repository
-		var resp *github.Response
-		var err error
-
-		repos, resp, err = c.client.Repositories.ListByUser(ctx, owner, options)
-
+		repos, resp, err := c.client.Repositories.ListByOrg(ctx, org, options)
 		if err != nil {
-			slog.Error("Failed to fetch GitHub repositories", "error", err, "owner", owner, "page", options.Page)
-			return []Repository{}, err
+			return nil, err
 		}
 
 		for _, r := range repos {
@@ -107,7 +113,7 @@ func (c *Client) ListRepositories(ctx context.Context, owner string, limit int) 
 			})
 		}
 
-		slog.Debug("Fetched GitHub repositories page", "page", options.Page, "count", len(repos), "total", len(allRepos))
+		slog.Debug("Fetched GitHub org repositories page", "org", org, "page", options.Page, "count", len(repos), "total", len(allRepos))
 
 		if limit > 0 && len(allRepos) >= limit {
 			break
@@ -119,7 +125,59 @@ func (c *Client) ListRepositories(ctx context.Context, owner string, limit int) 
 		options.Page = resp.NextPage
 	}
 
-	slog.Info("Repositories listed successfully", "total", len(allRepos))
+	slog.Info("Organization repositories listed successfully", "org", org, "total", len(allRepos))
+	return allRepos, nil
+}
+
+// listByUser lists repositories for a user
+func (c *Client) listByUser(ctx context.Context, user string, limit int) ([]Repository, error) {
+	var allRepos []Repository
+
+	options := &github.RepositoryListByUserOptions{
+		ListOptions: github.ListOptions{
+			Page:    1,
+			PerPage: 100,
+		},
+	}
+
+	for limit <= 0 || len(allRepos) < limit {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return nil, err
+		}
+
+		repos, resp, err := c.client.Repositories.ListByUser(ctx, user, options)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, r := range repos {
+			allRepos = append(allRepos, Repository{
+				ID:       r.GetID(),
+				Name:     r.GetName(),
+				FullName: r.GetFullName(),
+				CloneURL: r.GetCloneURL(),
+				SSHURL:   r.GetSSHURL(),
+				HTMLURL:  r.GetHTMLURL(),
+				Private:  r.GetPrivate(),
+				Archived: r.GetArchived(),
+				Language: r.GetLanguage(),
+				Stars:    r.GetStargazersCount(),
+			})
+		}
+
+		slog.Debug("Fetched GitHub user repositories page", "user", user, "page", options.Page, "count", len(repos), "total", len(allRepos))
+
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+
+		options.Page = resp.NextPage
+	}
+
+	slog.Info("User repositories listed successfully", "user", user, "total", len(allRepos))
 	return allRepos, nil
 }
 

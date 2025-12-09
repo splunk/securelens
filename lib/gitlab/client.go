@@ -51,12 +51,14 @@ type Project struct {
 	Archived   bool   `json:"archived"`
 }
 
-// ListProjects lists all accessible projects
+// ListProjects lists all accessible projects where the authenticated user is a member
 func (c *Client) ListProjects(ctx context.Context, limit int) ([]Project, error) {
 	slog.Info("Listing GitLab projects", "apiURL", c.apiURL, "limit", limit)
 
 	var allProjects []Project
+	membership := true
 	options := &gitlab.ListProjectsOptions{
+		Membership: &membership, // Only projects where user is a member
 		ListOptions: gitlab.ListOptions{
 			Page:    1,
 			PerPage: 100,
@@ -92,7 +94,7 @@ func (c *Client) ListProjects(ctx context.Context, limit int) ([]Project, error)
 			})
 		}
 
-		slog.Debug("Fetched GitLab projects page", "page", options.Page, "count", len(projects), "total", len(allProjects))
+		slog.Debug("Fetched GitLab projects page", "page", options.Page, "count", len(projects), "total", len(allProjects), "totalPages", resp.TotalPages, "totalItems", resp.TotalItems)
 
 		if limit > 0 && len(allProjects) >= limit {
 			break
