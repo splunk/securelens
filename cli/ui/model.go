@@ -76,11 +76,16 @@ type Model struct {
 	currentReportPath  string              // Path to currently viewed report
 
 	// Branch selection state
-	branchSelectRepo     scan.DiscoveredRepository // Repo being configured for scan
-	branchSelectBranches []string                  // Available branches
-	branchSelectIndex    int                       // Currently highlighted branch
-	branchSelected       map[int]bool              // Selected branches (multi-select)
-	scanQueue            []ScanItem                // Queue of repo+branch combinations to scan
+	branchSelectRepo     scan.DiscoveredRepository   // Repo being configured for scan
+	branchSelectBranches []string                    // Available branches
+	branchSelectIndex    int                         // Currently highlighted branch
+	branchSelected       map[int]bool                // Selected branches (multi-select)
+	repoQueue            []scan.DiscoveredRepository // Queue of repos waiting for branch selection
+
+	// Scan progress state
+	scanItems      []ScanItem // All scan items with their status
+	currentScanIdx int        // Index of currently running scan (-1 if none)
+	scanListIndex  int        // Selected item in scan progress view
 }
 
 // New creates a new TUI model
@@ -217,21 +222,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ScanCompleteMsg:
 		m.loading = false
-		if msg.Error != nil {
-			m.err = msg.Error
-		} else {
-			m.reports = append(m.reports, msg.Report)
-			m.currentReport = msg.Report
-			m.view = ViewResults
-			// Auto-save the report
-			savedPath, err := saveReport(m.reportsDir, msg.Report)
-			if err != nil {
-				m.statusMsg = "Report completed (save failed: " + err.Error() + ")"
+
+		// Update the current scan item's status
+		if m.currentScanIdx >= 0 && m.currentScanIdx < len(m.scanItems) {
+			if msg.Error != nil {
+				m.scanItems[m.currentScanIdx].Status = ScanStatusError
+				m.scanItems[m.currentScanIdx].Error = msg.Error.Error()
 			} else {
-				m.statusMsg = "Report saved to " + savedPath
-				m.currentReportPath = savedPath
+				m.scanItems[m.currentScanIdx].Status = ScanStatusComplete
+				m.reports = append(m.reports, msg.Report)
+				// Auto-save the report
+				savedPath, err := saveReport(m.reportsDir, msg.Report)
+				if err != nil {
+					m.scanItems[m.currentScanIdx].ReportPath = "(save failed)"
+				} else {
+					m.scanItems[m.currentScanIdx].ReportPath = savedPath
+				}
 			}
 		}
+
+		// Find next pending scan
+		nextIdx := -1
+		for i := m.currentScanIdx + 1; i < len(m.scanItems); i++ {
+			if m.scanItems[i].Status == ScanStatusPending {
+				nextIdx = i
+				break
+			}
+		}
+
+		if nextIdx >= 0 {
+			// Start the next scan
+			m.currentScanIdx = nextIdx
+			m.scanItems[nextIdx].Status = ScanStatusRunning
+			m.loading = true
+			item := m.scanItems[nextIdx]
+			m.statusMsg = fmt.Sprintf("Scanning %s @ %s...", item.Repo.FullName, item.Branch)
+			return m, m.runScanWithBranch(item.Repo, item.Branch)
+		}
+
+		// All scans complete - show summary
+		m.currentScanIdx = -1
+		completedCount := 0
+		errorCount := 0
+		for _, item := range m.scanItems {
+			if item.Status == ScanStatusComplete {
+				completedCount++
+			} else if item.Status == ScanStatusError {
+				errorCount++
+			}
+		}
+		m.statusMsg = fmt.Sprintf("All scans complete: %d succeeded, %d failed", completedCount, errorCount)
 
 	case ErrorMsg:
 		m.err = msg.Err
@@ -269,6 +309,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.view = ViewBranchSelect
+		}
+
+	case SearchResultsMsg:
+		m.loading = false
+		if msg.Error != nil {
+			m.err = msg.Error
+		} else {
+			// Prepend search results to repos list (after manual repos)
+			m.repos = append(m.manualRepos, msg.Repos...)
+			m.statusMsg = fmt.Sprintf("Found %d repos for \"%s\"", len(msg.Repos), msg.Query)
+			m.repoListIndex = 0
 		}
 	}
 
@@ -503,6 +554,21 @@ func filterConfigByOrg(cfg *config.Config, provider, org string) *config.Config 
 	}
 
 	return filtered
+}
+
+// searchRepos searches for repositories via API
+func (m Model) searchRepos(query string) tea.Cmd {
+	cfg := m.config
+	provider := m.getProviderFilter()
+	limit := m.repoPageSize
+	return func() tea.Msg {
+		ctx := context.Background()
+		repos, err := scan.SearchRepositories(ctx, cfg, query, provider, limit)
+		if err != nil {
+			return SearchResultsMsg{Query: query, Repos: nil, Error: err}
+		}
+		return SearchResultsMsg{Query: query, Repos: repos, Error: nil}
+	}
 }
 
 // loadBranches fetches branches for a repository

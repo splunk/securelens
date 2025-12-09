@@ -138,8 +138,28 @@ type BranchesLoadedMsg struct {
 	Error    error
 }
 
+// ScanStatus represents the status of a scan job
+type ScanStatus string
+
+const (
+	ScanStatusPending  ScanStatus = "pending"
+	ScanStatusRunning  ScanStatus = "running"
+	ScanStatusComplete ScanStatus = "complete"
+	ScanStatusError    ScanStatus = "error"
+)
+
 // ScanItem represents a single scan job (repo + branch combination)
 type ScanItem struct {
-	Repo   scan.DiscoveredRepository
-	Branch string
+	Repo       scan.DiscoveredRepository
+	Branch     string
+	Status     ScanStatus
+	ReportPath string // Path to saved report (when complete)
+	Error      string // Error message (when failed)
+}
+
+// SearchResultsMsg is sent when search results are loaded
+type SearchResultsMsg struct {
+	Query string
+	Repos []scan.DiscoveredRepository
+	Error error
 }
