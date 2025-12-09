@@ -134,18 +134,44 @@ func (m Model) viewRepos() string {
 		tabsRendered = append(tabsRendered, style.Render(" "+tab+" "))
 	}
 	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, tabsRendered...))
+
+	// Show organization selector if on a provider-specific tab with multiple orgs
+	orgs := m.getOrganizations()
+	if m.tabIndex > 0 && len(orgs) > 0 {
+		b.WriteString("  ")
+		orgLabel := m.getCurrentOrg()
+		orgStyle := lipgloss.NewStyle().
+			Foreground(ColorSuccess).
+			Bold(true)
+		b.WriteString(orgStyle.Render("Org: " + orgLabel))
+		if len(orgs) > 1 {
+			b.WriteString(SubtleStyle.Render(fmt.Sprintf(" [%d orgs, ]/o to switch]", len(orgs))))
+		}
+	}
 	b.WriteString("\n\n")
 
 	// Filter repos by selected tab
 	filteredRepos := m.filterReposByTab()
 
-	// Show repo list
-	for i, repo := range filteredRepos {
-		if i > 15 {
-			b.WriteString(fmt.Sprintf("\n  ... and %d more", len(filteredRepos)-15))
-			break
-		}
+	// Calculate visible window (show 20 repos at a time, scrolling with cursor)
+	pageSize := 20
+	startIdx := 0
+	if m.repoListIndex >= pageSize {
+		startIdx = m.repoListIndex - pageSize + 1
+	}
+	endIdx := startIdx + pageSize
+	if endIdx > len(filteredRepos) {
+		endIdx = len(filteredRepos)
+	}
 
+	// Show scroll indicator if there are items above
+	if startIdx > 0 {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↑ %d more above\n", startIdx)))
+	}
+
+	// Show repo list
+	for i := startIdx; i < endIdx; i++ {
+		repo := filteredRepos[i]
 		prefix := "  "
 		if i == m.repoListIndex {
 			prefix = "> "
@@ -160,7 +186,18 @@ func (m Model) viewRepos() string {
 		}
 
 		// Provider badge
-		provider := ProviderStyle(repo.Provider).Render(repo.Provider[:2])
+		providerBadge := ""
+		if len(repo.Provider) >= 2 {
+			providerBadge = ProviderStyle(repo.Provider).Render(repo.Provider[:2])
+		} else {
+			providerBadge = ProviderStyle(repo.Provider).Render(repo.Provider)
+		}
+
+		// Source indicator for manual repos
+		sourceTag := ""
+		if repo.Source == "manual" {
+			sourceTag = lipgloss.NewStyle().Foreground(ColorSuccess).Render(" [manual]")
+		}
 
 		// Visibility
 		vis := ""
@@ -168,18 +205,27 @@ func (m Model) viewRepos() string {
 			vis = SubtleStyle.Render(" (private)")
 		}
 
-		line := fmt.Sprintf("%s%s%s %s%s", prefix, selected, provider, repo.FullName, vis)
+		line := fmt.Sprintf("%s%s%s %s%s%s", prefix, selected, providerBadge, repo.FullName, vis, sourceTag)
 		if i == m.repoListIndex {
 			line = SelectedStyle.Render(line)
 		}
 		b.WriteString(line + "\n")
 	}
 
+	// Show scroll indicator if there are items below
+	if endIdx < len(filteredRepos) {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↓ %d more below\n", len(filteredRepos)-endIdx)))
+	}
+
 	// Footer hints
 	b.WriteString("\n")
-	footerText := "/: search • +: add URL • space: toggle • enter: scan • r: refresh"
+	footerText := "/: search • +: add URL • space: select • enter: scan • r: refresh"
 	if m.hasMoreRepos {
-		footerText += " • m: more"
+		footerText += " • m: load more"
+	}
+	// Show org switching hint if on a provider tab with multiple orgs
+	if m.tabIndex > 0 && len(orgs) > 1 {
+		footerText += " • ]/o: next org"
 	}
 	b.WriteString(HelpStyle.Render(footerText))
 
@@ -340,11 +386,13 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.repoURLInput != "" {
 				repo := m.parseRepoURL(m.repoURLInput)
 				if repo != nil {
+					// Add to manualRepos (persists across reloads) AND to repos (for immediate display)
+					m.manualRepos = append([]scan.DiscoveredRepository{*repo}, m.manualRepos...)
 					m.repos = append([]scan.DiscoveredRepository{*repo}, m.repos...)
 					m.repoListIndex = 0
 					m.statusMsg = "Added: " + repo.FullName
 				} else {
-					m.statusMsg = "Invalid URL format"
+					m.statusMsg = "Invalid URL format. Use: https://github.com/owner/repo"
 				}
 			}
 			m.addingRepoURL = false
@@ -425,6 +473,7 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		oldTab := m.tabIndex
 		m.tabIndex = (m.tabIndex + 1) % 4
 		m.repoListIndex = 0
+		m.orgIndex = 0 // Reset org index when changing tabs
 		// Reload repos if tab changed and we're switching to/from a specific provider
 		if oldTab != m.tabIndex {
 			return m.reloadIfNeeded()
@@ -433,9 +482,36 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		oldTab := m.tabIndex
 		m.tabIndex = (m.tabIndex + 3) % 4 // +3 is same as -1 mod 4
 		m.repoListIndex = 0
+		m.orgIndex = 0 // Reset org index when changing tabs
 		// Reload repos if tab changed
 		if oldTab != m.tabIndex {
 			return m.reloadIfNeeded()
+		}
+	case key.Matches(msg, m.keys.NextOrg):
+		// Cycle to next organization
+		orgs := m.getOrganizations()
+		if len(orgs) > 0 {
+			m.orgIndex = (m.orgIndex + 1) % (len(orgs) + 1) // +1 for "All"
+			m.repoListIndex = 0
+			m.repoLoadCount = 0
+			m.hasMoreRepos = true
+			m.loading = true
+			m.repos = nil
+			m.selected = make(map[int]bool)
+			return m, m.loadRepos()
+		}
+	case key.Matches(msg, m.keys.PrevOrg):
+		// Cycle to previous organization
+		orgs := m.getOrganizations()
+		if len(orgs) > 0 {
+			m.orgIndex = (m.orgIndex + len(orgs)) % (len(orgs) + 1) // +len for wrap-around
+			m.repoListIndex = 0
+			m.repoLoadCount = 0
+			m.hasMoreRepos = true
+			m.loading = true
+			m.repos = nil
+			m.selected = make(map[int]bool)
+			return m, m.loadRepos()
 		}
 	case key.Matches(msg, m.keys.Refresh):
 		m.repoLoadCount = 0 // Reset pagination on refresh
@@ -560,7 +636,7 @@ func (m Model) updateScan(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // ============================================================================
-// Results View (placeholder - will be expanded in Phase 4)
+// Results View - Report Browser with Hierarchical Navigation
 // ============================================================================
 
 func (m Model) viewResults() string {
@@ -570,17 +646,114 @@ func (m Model) viewResults() string {
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Scan Results"))
 	b.WriteString("\n\n")
 
-	if len(m.reports) == 0 {
-		b.WriteString(SubtleStyle.Render("No scan results yet."))
-		b.WriteString("\n\n")
-		b.WriteString("Go to ")
-		b.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("[2] Repos"))
-		b.WriteString(" to scan a repository")
+	// If we're viewing a specific report, show the report details
+	if m.currentReport != nil {
+		return m.viewReportDetail()
+	}
+
+	// Show loading state
+	if m.loading {
+		b.WriteString(m.spinner.View() + " Loading reports...")
 		return b.String()
 	}
 
-	// Show most recent report
-	report := m.reports[len(m.reports)-1]
+	// Show breadcrumb navigation
+	breadcrumb := m.getBreadcrumb()
+	levelName := m.getLevelName()
+	b.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Render(breadcrumb))
+	b.WriteString("\n")
+	b.WriteString(SubtleStyle.Render("Browsing: " + levelName))
+	b.WriteString("\n\n")
+
+	// Show items at current level
+	if len(m.reportBrowserItems) == 0 {
+		b.WriteString(SubtleStyle.Render("No reports found."))
+		b.WriteString("\n\n")
+		b.WriteString("Run a scan with ")
+		b.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("--debug"))
+		b.WriteString(" to save reports:")
+		b.WriteString("\n")
+		b.WriteString(HelpStyle.Render("  securelens scan repo --local-path . --mode standalone --debug"))
+		return b.String()
+	}
+
+	// Calculate visible window (show 15 items at a time)
+	pageSize := 15
+	startIdx := 0
+	if m.reportListIndex >= pageSize {
+		startIdx = m.reportListIndex - pageSize + 1
+	}
+	endIdx := startIdx + pageSize
+	if endIdx > len(m.reportBrowserItems) {
+		endIdx = len(m.reportBrowserItems)
+	}
+
+	// Show scroll indicator if there are items above
+	if startIdx > 0 {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↑ %d more above\n", startIdx)))
+	}
+
+	// Show items list
+	for i := startIdx; i < endIdx; i++ {
+		item := m.reportBrowserItems[i]
+		prefix := "  "
+		if i == m.reportListIndex {
+			prefix = "> "
+		}
+
+		var line string
+		if item.IsDir {
+			// Directory with icon and child count
+			icon := m.getDirIcon()
+			childInfo := ""
+			if item.Children > 0 {
+				childInfo = SubtleStyle.Render(fmt.Sprintf(" (%d)", item.Children))
+			}
+			line = fmt.Sprintf("%s%s %s%s", prefix, icon, item.Name, childInfo)
+		} else {
+			// Report file
+			icon := "📄"
+			line = fmt.Sprintf("%s%s %s", prefix, icon, item.Name)
+		}
+
+		if i == m.reportListIndex {
+			line = SelectedStyle.Render(line)
+		}
+		b.WriteString(line + "\n")
+	}
+
+	// Show scroll indicator if there are items below
+	if endIdx < len(m.reportBrowserItems) {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↓ %d more below\n", len(m.reportBrowserItems)-endIdx)))
+	}
+
+	// Footer hints
+	b.WriteString("\n")
+	if len(m.reportBrowserPath) > 0 {
+		b.WriteString(HelpStyle.Render("enter: open • backspace/esc: go back • r: refresh"))
+	} else {
+		b.WriteString(HelpStyle.Render("enter: open • r: refresh"))
+	}
+
+	return b.String()
+}
+
+// viewReportDetail renders the detailed view of a loaded report
+func (m Model) viewReportDetail() string {
+	var b strings.Builder
+
+	report := m.currentReport
+
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Scan Results"))
+	b.WriteString("\n")
+	// Show saved path with highlight if available
+	if m.currentReportPath != "" {
+		savedStyle := lipgloss.NewStyle().Foreground(ColorSuccess)
+		b.WriteString(savedStyle.Render("Saved to: "))
+		b.WriteString(SubtleStyle.Render(m.currentReportPath))
+	}
+	b.WriteString("\n\n")
 
 	b.WriteString(fmt.Sprintf("Repository: %s\n", report.Repository))
 	b.WriteString(fmt.Sprintf("Branch:     %s\n", report.Branch))
@@ -604,6 +777,8 @@ func (m Model) viewResults() string {
 			}
 			if fc, exists := result["findings_count"]; exists {
 				findings = fmt.Sprintf("%v findings", fc)
+			} else if vc, exists := result["vulnerabilities_count"]; exists {
+				findings = fmt.Sprintf("%v vulns", vc)
 			}
 			severityStr = scan.ExtractSeveritySummary(result)
 		}
@@ -614,18 +789,98 @@ func (m Model) viewResults() string {
 	b.WriteString("└────────────┴──────────┴───────────────────┴─────────────┘\n")
 
 	b.WriteString("\n")
-	b.WriteString(HelpStyle.Render("enter: view details • e: export JSON • b: back"))
+	b.WriteString(HelpStyle.Render("backspace/esc: back to browser"))
 
 	return b.String()
 }
 
-func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Back):
-		m.view = ViewRepos
-	case key.Matches(msg, m.keys.Export):
-		m.statusMsg = "Exported to reports/latest.json"
+// getLevelName returns a human-readable name for the current browser level
+func (m Model) getLevelName() string {
+	level := m.getCurrentBrowserLevel()
+	switch level {
+	case ReportLevelOwner:
+		return "Organizations/Owners"
+	case ReportLevelRepo:
+		return "Repositories"
+	case ReportLevelBranch:
+		return "Branches"
+	case ReportLevelCommit:
+		return "Commits"
+	case ReportLevelReport:
+		return "Reports"
+	default:
+		return "Reports"
 	}
+}
+
+// getDirIcon returns an appropriate icon for the current level
+func (m Model) getDirIcon() string {
+	level := m.getCurrentBrowserLevel()
+	switch level {
+	case ReportLevelOwner:
+		return "🏢"
+	case ReportLevelRepo:
+		return "📁"
+	case ReportLevelBranch:
+		return "🌿"
+	case ReportLevelCommit:
+		return "📝"
+	default:
+		return "📂"
+	}
+}
+
+func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If viewing a report detail, handle back navigation
+	if m.currentReport != nil {
+		switch {
+		case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Escape), msg.Type == tea.KeyBackspace:
+			m.currentReport = nil
+			m.currentReportPath = ""
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Browser navigation
+	switch {
+	case key.Matches(msg, m.keys.Up):
+		if m.reportListIndex > 0 {
+			m.reportListIndex--
+		}
+	case key.Matches(msg, m.keys.Down):
+		if m.reportListIndex < len(m.reportBrowserItems)-1 {
+			m.reportListIndex++
+		}
+	case key.Matches(msg, m.keys.Enter):
+		// Navigate into directory or open report
+		if m.reportListIndex < len(m.reportBrowserItems) {
+			item := m.reportBrowserItems[m.reportListIndex]
+			if item.IsDir {
+				// Navigate into directory
+				m.reportBrowserPath = append(m.reportBrowserPath, item.Name)
+				m.reportListIndex = 0
+				m.loading = true
+				return m, m.loadReportBrowserItems()
+			} else {
+				// Load and display report
+				m.loading = true
+				return m, m.loadReportDetail(item.Path)
+			}
+		}
+	case key.Matches(msg, m.keys.Back), key.Matches(msg, m.keys.Escape), msg.Type == tea.KeyBackspace:
+		// Navigate up one level
+		if len(m.reportBrowserPath) > 0 {
+			m.reportBrowserPath = m.reportBrowserPath[:len(m.reportBrowserPath)-1]
+			m.reportListIndex = 0
+			m.loading = true
+			return m, m.loadReportBrowserItems()
+		}
+	case key.Matches(msg, m.keys.Refresh):
+		m.loading = true
+		return m, m.loadReportBrowserItems()
+	}
+
 	return m, nil
 }
 

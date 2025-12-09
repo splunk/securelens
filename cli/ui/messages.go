@@ -15,6 +15,17 @@ const (
 	ViewWizard
 )
 
+// ReportBrowserLevel represents the navigation level in the report browser
+type ReportBrowserLevel int
+
+const (
+	ReportLevelOwner ReportBrowserLevel = iota
+	ReportLevelRepo
+	ReportLevelBranch
+	ReportLevelCommit
+	ReportLevelReport
+)
+
 func (v ViewType) String() string {
 	return [...]string{"Home", "Repositories", "Scanning", "Results", "Setup"}[v]
 }
@@ -96,4 +107,25 @@ type ProviderTestMsg struct {
 	Provider string
 	Success  bool
 	Message  string
+}
+
+// ReportBrowserItem represents an item in the report browser
+type ReportBrowserItem struct {
+	Name     string // Display name (owner, repo, branch, commit, or report filename)
+	Path     string // Full path to this level
+	IsDir    bool   // True if this is a directory (not a report file)
+	Children int    // Number of children (for directories)
+}
+
+// ReportBrowserLoadedMsg is sent when report browser items are loaded
+type ReportBrowserLoadedMsg struct {
+	Level ReportBrowserLevel
+	Items []ReportBrowserItem
+	Path  string // Current path being browsed
+}
+
+// ReportDetailLoadedMsg is sent when a report is loaded for viewing
+type ReportDetailLoadedMsg struct {
+	Report *scan.ScanReport
+	Path   string
 }

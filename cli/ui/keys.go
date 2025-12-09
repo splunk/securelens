@@ -41,6 +41,10 @@ type KeyMap struct {
 	// Tab navigation
 	Tab      key.Binding
 	ShiftTab key.Binding
+
+	// Organization navigation (within provider tab)
+	NextOrg key.Binding
+	PrevOrg key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings
@@ -160,6 +164,16 @@ func DefaultKeyMap() KeyMap {
 		ShiftTab: key.NewBinding(
 			key.WithKeys("shift+tab"),
 			key.WithHelp("shift+tab", "prev tab"),
+		),
+
+		// Organization navigation
+		NextOrg: key.NewBinding(
+			key.WithKeys("]", "o"),
+			key.WithHelp("]/o", "next org"),
+		),
+		PrevOrg: key.NewBinding(
+			key.WithKeys("["),
+			key.WithHelp("[", "prev org"),
 		),
 	}
 }
