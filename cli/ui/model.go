@@ -265,9 +265,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		completedCount := 0
 		errorCount := 0
 		for _, item := range m.scanItems {
-			if item.Status == ScanStatusComplete {
+			switch item.Status {
+			case ScanStatusComplete:
 				completedCount++
-			} else if item.Status == ScanStatusError {
+			case ScanStatusError:
 				errorCount++
 			}
 		}
