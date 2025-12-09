@@ -200,46 +200,137 @@ type StandaloneScanResult struct {
 	Error     string                 `json:"error,omitempty"`
 }
 
+// ScannerResult is used for channel communication
+type ScannerResult struct {
+	Scanner string
+	Result  *StandaloneScanResult
+}
+
 // RunStandaloneScans runs the requested scanners on the repository
+// When parallel is true, scanners run concurrently using goroutines
 func RunStandaloneScans(ctx context.Context, repoPath string, scanners []ScannerType, assetsDir string) (map[string]*StandaloneScanResult, error) {
+	return RunStandaloneScansParallel(ctx, repoPath, scanners, assetsDir, true)
+}
+
+// RunStandaloneScansParallel runs scanners with optional parallelism
+func RunStandaloneScansParallel(ctx context.Context, repoPath string, scanners []ScannerType, assetsDir string, parallel bool) (map[string]*StandaloneScanResult, error) {
+	if !parallel {
+		return runScannersSequential(ctx, repoPath, scanners, assetsDir)
+	}
+
 	results := make(map[string]*StandaloneScanResult)
+	resultChan := make(chan ScannerResult, len(scanners))
 
+	// Create a context with timeout for the entire scan operation
+	scanCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+
+	// Launch goroutines for each scanner
 	for _, scanner := range scanners {
-		slog.Info("Running standalone scanner", "scanner", scanner, "repo_path", repoPath)
+		go func(s ScannerType) {
+			result := runSingleScanner(scanCtx, s, repoPath, assetsDir)
+			select {
+			case resultChan <- ScannerResult{Scanner: string(s), Result: result}:
+			case <-scanCtx.Done():
+				slog.Warn("Scanner result dropped due to context cancellation", "scanner", s)
+			}
+		}(scanner)
+	}
 
-		result := &StandaloneScanResult{
-			Scanner:   string(scanner),
-			StartTime: time.Now(),
+	// Collect results with timeout
+	for i := 0; i < len(scanners); i++ {
+		select {
+		case res := <-resultChan:
+			results[res.Scanner] = res.Result
+		case <-scanCtx.Done():
+			slog.Warn("Timeout waiting for scanner results", "collected", len(results), "expected", len(scanners))
+			return results, nil
 		}
-
-		var err error
-		switch scanner {
-		case ScannerOpengrep:
-			result.Results, err = runOpengrep(ctx, repoPath, assetsDir)
-		case ScannerTrivy:
-			result.Results, err = runTrivy(ctx, repoPath)
-		case ScannerTrufflehog:
-			result.Results, err = runTrufflehog(ctx, repoPath)
-		default:
-			err = fmt.Errorf("unknown scanner: %s", scanner)
-		}
-
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(result.StartTime).String()
-
-		if err != nil {
-			result.Status = "FAILED"
-			result.Error = err.Error()
-			slog.Error("Scanner failed", "scanner", scanner, "error", err)
-		} else {
-			result.Status = "COMPLETE"
-			slog.Info("Scanner completed", "scanner", scanner, "duration", result.Duration)
-		}
-
-		results[string(scanner)] = result
 	}
 
 	return results, nil
+}
+
+func runScannersSequential(ctx context.Context, repoPath string, scanners []ScannerType, assetsDir string) (map[string]*StandaloneScanResult, error) {
+	results := make(map[string]*StandaloneScanResult)
+	for _, scanner := range scanners {
+		results[string(scanner)] = runSingleScanner(ctx, scanner, repoPath, assetsDir)
+	}
+	return results, nil
+}
+
+func runSingleScanner(ctx context.Context, scanner ScannerType, repoPath, assetsDir string) *StandaloneScanResult {
+	slog.Info("Running standalone scanner", "scanner", scanner, "repo_path", repoPath)
+
+	result := &StandaloneScanResult{
+		Scanner:   string(scanner),
+		StartTime: time.Now(),
+	}
+
+	var err error
+	switch scanner {
+	case ScannerOpengrep:
+		result.Results, err = runOpengrep(ctx, repoPath, assetsDir)
+	case ScannerTrivy:
+		result.Results, err = runTrivy(ctx, repoPath)
+	case ScannerTrufflehog:
+		result.Results, err = runTrufflehog(ctx, repoPath)
+	default:
+		err = fmt.Errorf("unknown scanner: %s", scanner)
+	}
+
+	result.EndTime = time.Now()
+	result.Duration = result.EndTime.Sub(result.StartTime).String()
+
+	if err != nil {
+		result.Status = "FAILED"
+		result.Error = err.Error()
+		slog.Error("Scanner failed", "scanner", scanner, "error", err)
+	} else {
+		result.Status = "COMPLETE"
+		slog.Info("Scanner completed", "scanner", scanner, "duration", result.Duration)
+	}
+
+	return result
+}
+
+// OpenGrepResults represents the direct output from opengrep (different from SRS semgrep format)
+type OpenGrepResults struct {
+	Errors                 []interface{}       `json:"errors"`
+	InterfileLanguagesUsed []interface{}       `json:"interfile_languages_used"`
+	Paths                  OpenGrepPaths       `json:"paths"`
+	Results                []OpenGrepFinding   `json:"results"`
+	SkippedRules           []interface{}       `json:"skipped_rules"`
+	Version                string              `json:"version"`
+}
+
+type OpenGrepPaths struct {
+	Scanned []string `json:"scanned"`
+}
+
+type OpenGrepFinding struct {
+	CheckID string `json:"check_id"`
+	End     struct {
+		Col    int `json:"col"`
+		Line   int `json:"line"`
+		Offset int `json:"offset"`
+	} `json:"end"`
+	Extra struct {
+		EngineKind      string                 `json:"engine_kind"`
+		Fingerprint     string                 `json:"fingerprint"`
+		IsIgnored       bool                   `json:"is_ignored"`
+		Lines           string                 `json:"lines"`
+		Message         string                 `json:"message"`
+		Metadata        map[string]interface{} `json:"metadata"`
+		Severity        string                 `json:"severity"`
+		ValidationState string                 `json:"validation_state"`
+	} `json:"extra"`
+	Path  string `json:"path"`
+	Start struct {
+		Col    int `json:"col"`
+		Line   int `json:"line"`
+		Offset int `json:"offset"`
+	} `json:"start"`
 }
 
 func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]interface{}, error) {
@@ -278,18 +369,32 @@ func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]in
 		return nil, fmt.Errorf("failed to read opengrep output: %w", err)
 	}
 
-	var results srs.SemgrepResults
+	// OpenGrep outputs directly as the results object, not wrapped
+	var results OpenGrepResults
 	if err := json.Unmarshal(data, &results); err != nil {
+		// Log the first 500 chars of data for debugging
+		preview := string(data)
+		if len(preview) > 500 {
+			preview = preview[:500]
+		}
+		slog.Debug("Failed to parse opengrep output", "preview", preview, "error", err)
 		return nil, fmt.Errorf("failed to parse opengrep output: %w", err)
 	}
 
-	// Convert to SRS-compatible format
+	// Count findings by severity
+	severityCounts := make(map[string]int)
+	for _, finding := range results.Results {
+		severityCounts[finding.Extra.Severity]++
+	}
+
 	return map[string]interface{}{
-		"status":          "COMPLETE",
-		"findings_count":  len(results.Results.Results),
-		"files_scanned":   len(results.Results.Paths.Scanned),
-		"findings":        results.Results.Results,
-		"by_severity":     countBySeverity(results.Results.Results),
+		"status":         "COMPLETE",
+		"findings_count": len(results.Results),
+		"files_scanned":  len(results.Paths.Scanned),
+		"findings":       results.Results,
+		"by_severity":    severityCounts,
+		"errors":         results.Errors,
+		"version":        results.Version,
 	}, nil
 }
 
