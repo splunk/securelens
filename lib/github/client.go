@@ -90,12 +90,12 @@ func (c *Client) listByOrg(ctx context.Context, org string, limit int) ([]Reposi
 
 	for limit <= 0 || len(allRepos) < limit {
 		if err := c.limiter.Wait(ctx); err != nil {
-			return nil, err
+			return []Repository{}, err
 		}
 
 		repos, resp, err := c.client.Repositories.ListByOrg(ctx, org, options)
 		if err != nil {
-			return nil, err
+			return []Repository{}, err
 		}
 
 		for _, r := range repos {
@@ -142,12 +142,12 @@ func (c *Client) listByUser(ctx context.Context, user string, limit int) ([]Repo
 
 	for limit <= 0 || len(allRepos) < limit {
 		if err := c.limiter.Wait(ctx); err != nil {
-			return nil, err
+			return []Repository{}, err
 		}
 
 		repos, resp, err := c.client.Repositories.ListByUser(ctx, user, options)
 		if err != nil {
-			return nil, err
+			return []Repository{}, err
 		}
 
 		for _, r := range repos {
@@ -298,6 +298,65 @@ func (c *Client) listAuthenticatedUserRepos(ctx context.Context, limit int) ([]R
 	}
 
 	slog.Info("Authenticated user repositories listed successfully", "total", len(allRepos))
+	return allRepos, nil
+}
+
+// SearchRepositories searches for repositories matching a query string
+// Uses GitHub's search API which supports org:, user:, and general text search
+func (c *Client) SearchRepositories(ctx context.Context, query string, limit int) ([]Repository, error) {
+	slog.Info("Searching GitHub repositories", "apiURL", c.apiURL, "query", query, "limit", limit)
+
+	var allRepos []Repository
+	options := &github.SearchOptions{
+		ListOptions: github.ListOptions{
+			Page:    1,
+			PerPage: 100,
+		},
+	}
+
+	for limit <= 0 || len(allRepos) < limit {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return nil, err
+		}
+
+		result, resp, err := c.client.Search.Repositories(ctx, query, options)
+		if err != nil {
+			slog.Error("Failed to search GitHub repositories", "error", err, "query", query)
+			return nil, err
+		}
+
+		for _, r := range result.Repositories {
+			if limit > 0 && len(allRepos) >= limit {
+				break
+			}
+
+			allRepos = append(allRepos, Repository{
+				ID:       r.GetID(),
+				Name:     r.GetName(),
+				FullName: r.GetFullName(),
+				CloneURL: r.GetCloneURL(),
+				SSHURL:   r.GetSSHURL(),
+				HTMLURL:  r.GetHTMLURL(),
+				Private:  r.GetPrivate(),
+				Archived: r.GetArchived(),
+				Language: r.GetLanguage(),
+				Stars:    r.GetStargazersCount(),
+			})
+		}
+
+		slog.Debug("Searched GitHub repositories page", "query", query, "page", options.Page, "count", len(result.Repositories), "total", len(allRepos), "totalMatches", result.GetTotal())
+
+		if limit > 0 && len(allRepos) >= limit {
+			break
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+
+		options.Page = resp.NextPage
+	}
+
+	slog.Info("Repository search completed", "query", query, "total", len(allRepos))
 	return allRepos, nil
 }
 

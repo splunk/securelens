@@ -141,6 +141,66 @@ func (c *Client) GetProject(ctx context.Context, projectPath string) (*Project, 
 	return project, nil
 }
 
+// SearchProjects searches for projects matching a query string
+func (c *Client) SearchProjects(ctx context.Context, query string, limit int) ([]Project, error) {
+	slog.Info("Searching GitLab projects", "apiURL", c.apiURL, "query", query, "limit", limit)
+
+	var allProjects []Project
+	membership := true
+	options := &gitlab.ListProjectsOptions{
+		Membership: &membership,
+		Search:     &query, // API-level search
+		ListOptions: gitlab.ListOptions{
+			Page:    1,
+			PerPage: 100,
+		},
+	}
+
+	for limit <= 0 || len(allProjects) < limit {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return []Project{}, err
+		}
+
+		projects, resp, err := c.client.Projects.ListProjects(options)
+		if err != nil {
+			slog.Error("Failed to search GitLab projects", "error", err, "query", query)
+			return []Project{}, err
+		}
+
+		for _, p := range projects {
+			if limit > 0 && len(allProjects) >= limit {
+				break
+			}
+
+			allProjects = append(allProjects, Project{
+				ID:         p.ID,
+				Name:       p.Name,
+				Path:       p.Path,
+				PathWithNS: p.PathWithNamespace,
+				HTTPURL:    p.HTTPURLToRepo,
+				SSHURL:     p.SSHURLToRepo,
+				WebURL:     p.WebURL,
+				Visibility: string(p.Visibility),
+				Archived:   p.Archived,
+			})
+		}
+
+		slog.Debug("Searched GitLab projects page", "query", query, "page", options.Page, "count", len(projects), "total", len(allProjects))
+
+		if limit > 0 && len(allProjects) >= limit {
+			break
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+
+		options.Page = resp.NextPage
+	}
+
+	slog.Info("Projects search completed", "query", query, "total", len(allProjects))
+	return allProjects, nil
+}
+
 func (c *Client) ListBranches(ctx context.Context, projectID int) ([]string, error) {
 	slog.Info("Listing branches for GitLab project", "projectID", projectID)
 

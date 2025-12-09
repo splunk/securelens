@@ -377,6 +377,8 @@ func ScanRepositoryWithBranch(ctx context.Context, cfg *config.Config, repo Disc
 		AssetsDir:    "assets",
 		PollInterval: 10,
 		MaxWait:      30,
+		Debug:        true,      // Always save raw scanner reports
+		OutputDir:    "reports", // Default reports directory
 	}
 
 	// Auto-detect mode if not specified
@@ -449,6 +451,111 @@ func FetchBranches(ctx context.Context, cfg *config.Config, repo DiscoveredRepos
 
 	// Default to main if we can't fetch branches
 	return []string{"main"}, nil
+}
+
+// SearchRepositories searches for repositories matching a query using provider APIs (exported for UI use)
+func SearchRepositories(ctx context.Context, cfg *config.Config, query string, provider string, limit int) ([]DiscoveredRepository, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("no configuration provided")
+	}
+
+	var repos []DiscoveredRepository
+
+	// Search based on provider filter
+	switch provider {
+	case "github":
+		for _, gh := range cfg.Git.GitHub {
+			client, err := github.NewClient(gh.Token, gh.APIURL)
+			if err != nil {
+				continue
+			}
+			// Build search query - search within orgs if configured
+			searchQuery := query
+			if len(gh.Organizations) > 0 {
+				// Search within first org (or could combine with OR)
+				searchQuery = fmt.Sprintf("%s org:%s", query, gh.Organizations[0])
+			}
+			results, err := client.SearchRepositories(ctx, searchQuery, limit)
+			if err != nil {
+				continue
+			}
+			for _, r := range results {
+				repos = append(repos, DiscoveredRepository{
+					Provider:    "github",
+					Name:        r.Name,
+					FullName:    r.FullName,
+					URL:         r.CloneURL,
+					IsPrivate:   r.Private,
+					Description: r.Language,
+					Source:      "search",
+				})
+			}
+		}
+
+	case "gitlab":
+		for _, gl := range cfg.Git.GitLab {
+			client, err := gitlab.NewClient(gl.Token, gl.APIURL)
+			if err != nil {
+				continue
+			}
+			results, err := client.SearchProjects(ctx, query, limit)
+			if err != nil {
+				continue
+			}
+			for _, p := range results {
+				repos = append(repos, DiscoveredRepository{
+					Provider:    "gitlab",
+					Name:        p.Name,
+					FullName:    p.PathWithNS,
+					URL:         p.HTTPURL,
+					IsPrivate:   p.Visibility == "private",
+					Description: "",
+					Source:      "search",
+				})
+			}
+		}
+
+	case "bitbucket":
+		for _, bb := range cfg.Git.Bitbucket {
+			client, err := bitbucket.NewClient(bb.Username, bb.AppPassword, bb.APIURL)
+			if err != nil {
+				continue
+			}
+			results, err := client.SearchRepositories(ctx, bb.Workspace, query, limit)
+			if err != nil {
+				continue
+			}
+			for _, r := range results {
+				cloneURL := ""
+				for _, link := range r.Links.Clone {
+					if link.Name == "https" {
+						cloneURL = link.Href
+						break
+					}
+				}
+				repos = append(repos, DiscoveredRepository{
+					Provider:    "bitbucket",
+					Name:        r.Name,
+					FullName:    r.FullName,
+					URL:         cloneURL,
+					IsPrivate:   r.IsPrivate,
+					Description: r.Language,
+					Source:      "search",
+				})
+			}
+		}
+
+	default:
+		// Search all providers
+		ghRepos, _ := SearchRepositories(ctx, cfg, query, "github", limit)
+		repos = append(repos, ghRepos...)
+		glRepos, _ := SearchRepositories(ctx, cfg, query, "gitlab", limit)
+		repos = append(repos, glRepos...)
+		bbRepos, _ := SearchRepositories(ctx, cfg, query, "bitbucket", limit)
+		repos = append(repos, bbRepos...)
+	}
+
+	return repos, nil
 }
 
 // mapProviderToRepoProvider converts string provider to repository.GitProvider

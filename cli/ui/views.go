@@ -115,6 +115,8 @@ func (m Model) viewRepos() string {
 			BorderForeground(ColorPrimary).
 			Padding(0, 1)
 		b.WriteString(searchStyle.Render("Search: " + m.searchFilter + "█"))
+		b.WriteString("\n")
+		b.WriteString(HelpStyle.Render("Enter: search API • Esc: cancel • Type to filter locally"))
 		b.WriteString("\n\n")
 	} else if m.searchFilter != "" {
 		b.WriteString(SubtleStyle.Render("Filter: \"" + m.searchFilter + "\""))
@@ -419,6 +421,12 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case tea.KeyEnter:
 			m.searching = false
+			// If search term has 2+ chars, trigger API search
+			if len(m.searchFilter) >= 2 {
+				m.loading = true
+				m.statusMsg = "Searching for \"" + m.searchFilter + "\"..."
+				return m, m.searchRepos(m.searchFilter)
+			}
 			m.repoListIndex = 0
 			return m, nil
 		case tea.KeyBackspace:
@@ -536,11 +544,11 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			toScan = append(toScan, filteredRepos[m.repoListIndex])
 		}
 		if len(toScan) > 0 {
-			// For now, handle one repo at a time for branch selection
-			// TODO: Support bulk branch selection for multiple repos
+			// Queue all repos for branch selection, process first one
+			m.repoQueue = toScan[1:] // Remaining repos go to queue
 			repo := toScan[0]
 			m.loading = true
-			m.statusMsg = "Loading branches for " + repo.FullName + "..."
+			m.statusMsg = fmt.Sprintf("Loading branches for %s... (%d repos queued)", repo.FullName, len(m.repoQueue))
 			return m, m.loadBranches(repo)
 		}
 	}
@@ -559,9 +567,17 @@ func (m Model) viewBranchSelect() string {
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Select Branches to Scan"))
 	b.WriteString("\n\n")
 
-	// Show repo info
+	// Show repo info with queue status
 	b.WriteString(fmt.Sprintf("Repository: %s\n", m.branchSelectRepo.FullName))
 	b.WriteString(fmt.Sprintf("Provider:   %s\n", m.branchSelectRepo.Provider))
+	if len(m.repoQueue) > 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Render(
+			fmt.Sprintf("Queue:      %d more repo(s) after this\n", len(m.repoQueue))))
+	}
+	if len(m.scanItems) > 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(ColorSuccess).Render(
+			fmt.Sprintf("Scans:      %d scan(s) queued\n", len(m.scanItems))))
+	}
 	b.WriteString("\n")
 
 	if m.loading {
@@ -637,7 +653,11 @@ func (m Model) viewBranchSelect() string {
 
 	// Footer hints
 	b.WriteString("\n")
-	b.WriteString(HelpStyle.Render("space: toggle • a: select all • n: select none • enter: start scan • esc: back"))
+	if len(m.repoQueue) > 0 {
+		b.WriteString(HelpStyle.Render("space: toggle • a: all • n: none • enter: next repo • esc: cancel all"))
+	} else {
+		b.WriteString(HelpStyle.Render("space: toggle • a: all • n: none • enter: start scanning • esc: back"))
+	}
 
 	return b.String()
 }
@@ -645,6 +665,9 @@ func (m Model) viewBranchSelect() string {
 func (m Model) updateBranchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Escape):
+		// Clear all queues and go back
+		m.repoQueue = nil
+		m.scanItems = nil
 		m.view = ViewRepos
 		return m, nil
 
@@ -670,7 +693,7 @@ func (m Model) updateBranchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.branchSelected = make(map[int]bool)
 
 	case key.Matches(msg, m.keys.Enter):
-		// Build scan queue from selected branches
+		// Build scan items from selected branches
 		var selectedBranches []string
 		for i, selected := range m.branchSelected {
 			if selected && i < len(m.branchSelectBranches) {
@@ -686,21 +709,31 @@ func (m Model) updateBranchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Build scan queue
-		m.scanQueue = nil
+		// Add to scan items list with pending status
 		for _, branch := range selectedBranches {
-			m.scanQueue = append(m.scanQueue, ScanItem{
+			m.scanItems = append(m.scanItems, ScanItem{
 				Repo:   m.branchSelectRepo,
 				Branch: branch,
+				Status: ScanStatusPending,
 			})
 		}
 
-		// Start scanning the first item
-		if len(m.scanQueue) > 0 {
-			item := m.scanQueue[0]
-			m.scanQueue = m.scanQueue[1:] // Remove from queue
-			m.view = ViewScan
+		// If there are more repos in the queue, go to next repo's branch selection
+		if len(m.repoQueue) > 0 {
+			nextRepo := m.repoQueue[0]
+			m.repoQueue = m.repoQueue[1:]
 			m.loading = true
+			m.statusMsg = fmt.Sprintf("Loading branches for %s... (%d repos remaining)", nextRepo.FullName, len(m.repoQueue))
+			return m, m.loadBranches(nextRepo)
+		}
+
+		// No more repos - start scanning
+		if len(m.scanItems) > 0 {
+			m.view = ViewScan
+			m.currentScanIdx = 0
+			m.scanItems[0].Status = ScanStatusRunning
+			m.loading = true
+			item := m.scanItems[0]
 			m.statusMsg = fmt.Sprintf("Scanning %s @ %s...", item.Repo.FullName, item.Branch)
 			return m, m.runScanWithBranch(item.Repo, item.Branch)
 		}
@@ -710,87 +743,172 @@ func (m Model) updateBranchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // ============================================================================
-// Scan View (placeholder - will be expanded in Phase 3)
+// Scan View - Shows progress of all repo/branch scans
 // ============================================================================
 
 func (m Model) viewScan() string {
 	var b strings.Builder
 
 	b.WriteString("\n")
-
-	// Show error if any
-	if m.err != nil {
-		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorError).Render("Scan Failed"))
-		b.WriteString("\n\n")
-		b.WriteString(ErrorStyle.Render("Error: " + m.err.Error()))
-		b.WriteString("\n\n")
-		b.WriteString(HelpStyle.Render("Press esc to go back • r to retry"))
-		return b.String()
-	}
-
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Scanning..."))
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Scan Progress"))
 	b.WriteString("\n\n")
 
-	b.WriteString(m.spinner.View() + " Running security scans...")
-	b.WriteString("\n\n")
-
-	// Scanner status (placeholder)
-	scanners := []struct {
-		name   string
-		status string
-	}{
-		{"opengrep", "running"},
-		{"trivy", "pending"},
-		{"trufflehog", "pending"},
-	}
-
-	for _, s := range scanners {
-		var statusIcon string
-		switch s.status {
-		case "running":
-			statusIcon = m.spinner.View()
-		case "complete":
-			statusIcon = SuccessStyle.Render("✓")
-		case "error":
-			statusIcon = ErrorStyle.Render("✗")
-		default:
-			statusIcon = SubtleStyle.Render("○")
+	// Count stats
+	pending, running, completed, failed := 0, 0, 0, 0
+	for _, item := range m.scanItems {
+		switch item.Status {
+		case ScanStatusPending:
+			pending++
+		case ScanStatusRunning:
+			running++
+		case ScanStatusComplete:
+			completed++
+		case ScanStatusError:
+			failed++
 		}
-		b.WriteString(fmt.Sprintf("  %s %s\n", statusIcon, s.name))
 	}
 
+	// Summary line
+	total := len(m.scanItems)
+	if running > 0 {
+		b.WriteString(m.spinner.View() + " ")
+	}
+	summaryStyle := lipgloss.NewStyle().Bold(true)
+	b.WriteString(summaryStyle.Render(fmt.Sprintf("Scanning %d repo/branch combinations", total)))
 	b.WriteString("\n")
-	b.WriteString(HelpStyle.Render("Press esc to cancel"))
+	b.WriteString(fmt.Sprintf("  Completed: %s  Pending: %s  Failed: %s\n\n",
+		SuccessStyle.Render(fmt.Sprintf("%d", completed)),
+		SubtleStyle.Render(fmt.Sprintf("%d", pending)),
+		ErrorStyle.Render(fmt.Sprintf("%d", failed))))
+
+	// Calculate visible window (show ~10 items at a time)
+	pageSize := 10
+	startIdx := 0
+	if m.scanListIndex >= pageSize {
+		startIdx = m.scanListIndex - pageSize + 1
+	}
+	endIdx := startIdx + pageSize
+	if endIdx > len(m.scanItems) {
+		endIdx = len(m.scanItems)
+	}
+
+	// Show scan items as a simple list
+	for i := startIdx; i < endIdx; i++ {
+		item := m.scanItems[i]
+
+		// Status icon
+		var statusIcon string
+		switch item.Status {
+		case ScanStatusPending:
+			statusIcon = SubtleStyle.Render("○")
+		case ScanStatusRunning:
+			statusIcon = m.spinner.View()
+		case ScanStatusComplete:
+			statusIcon = SuccessStyle.Render("✓")
+		case ScanStatusError:
+			statusIcon = ErrorStyle.Render("✗")
+		}
+
+		// Cursor indicator
+		cursor := "  "
+		if i == m.currentScanIdx {
+			cursor = "> "
+		}
+
+		// Build the line
+		repoName := item.Repo.FullName
+		branchName := item.Branch
+
+		// First line: status, repo, branch
+		line := fmt.Sprintf("%s%s %s @ %s", cursor, statusIcon, repoName, branchName)
+		b.WriteString(line + "\n")
+
+		// Second line: report path or error (indented)
+		if item.Status == ScanStatusComplete && item.ReportPath != "" {
+			b.WriteString(fmt.Sprintf("      %s\n", SubtleStyle.Render(item.ReportPath)))
+		} else if item.Status == ScanStatusError && item.Error != "" {
+			b.WriteString(fmt.Sprintf("      %s\n", ErrorStyle.Render(item.Error)))
+		}
+	}
+
+	// Show scroll indicator
+	if endIdx < len(m.scanItems) {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↓ %d more below\n", len(m.scanItems)-endIdx)))
+	}
+
+	// Footer
+	b.WriteString("\n")
+	if running > 0 {
+		b.WriteString(HelpStyle.Render("Scans in progress... esc: cancel all"))
+	} else {
+		b.WriteString(HelpStyle.Render("enter: view results • r: retry failed • esc: back to repos"))
+	}
 
 	return b.String()
 }
 
 func (m Model) updateScan(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Check if scans are still running
+	running := false
+	for _, item := range m.scanItems {
+		if item.Status == ScanStatusRunning {
+			running = true
+			break
+		}
+	}
+
 	switch {
 	case key.Matches(msg, m.keys.Escape):
-		m.err = nil // Clear error when going back
+		// Clear state and go back
+		m.err = nil
+		m.scanItems = nil
+		m.currentScanIdx = -1
 		m.view = ViewRepos
 		return m, nil
-	case key.Matches(msg, m.keys.Refresh):
-		// Retry scan if there was an error
-		if m.err != nil {
-			m.err = nil
+
+	case key.Matches(msg, m.keys.Up):
+		if m.scanListIndex > 0 {
+			m.scanListIndex--
+		}
+
+	case key.Matches(msg, m.keys.Down):
+		if m.scanListIndex < len(m.scanItems)-1 {
+			m.scanListIndex++
+		}
+
+	case key.Matches(msg, m.keys.Enter):
+		// View results if all scans complete
+		if !running && len(m.scanItems) > 0 {
+			m.view = ViewResults
+			// Reset browser state and load root level
+			m.reportBrowserPath = nil
+			m.currentReport = nil
 			m.loading = true
-			m.statusMsg = "Retrying scan..."
-			// Re-scan the currently selected repos
-			filteredRepos := m.filterReposByTab()
-			var toScan []scan.DiscoveredRepository
-			for i, selected := range m.selected {
-				if selected && i < len(filteredRepos) {
-					toScan = append(toScan, filteredRepos[i])
+			return m, m.loadReportBrowserItems()
+		}
+
+	case key.Matches(msg, m.keys.Refresh):
+		// Retry failed scans
+		if !running {
+			// Find failed scans and reset them to pending
+			hasFailedScans := false
+			for i, item := range m.scanItems {
+				if item.Status == ScanStatusError {
+					m.scanItems[i].Status = ScanStatusPending
+					m.scanItems[i].Error = ""
+					hasFailedScans = true
 				}
 			}
-			if len(toScan) == 0 && m.repoListIndex < len(filteredRepos) {
-				toScan = append(toScan, filteredRepos[m.repoListIndex])
-			}
-			if len(toScan) > 0 {
-				return m, func() tea.Msg {
-					return ScanStartMsg{Repos: toScan}
+			if hasFailedScans {
+				// Find first pending and start scanning
+				for i, item := range m.scanItems {
+					if item.Status == ScanStatusPending {
+						m.currentScanIdx = i
+						m.scanItems[i].Status = ScanStatusRunning
+						m.loading = true
+						m.statusMsg = fmt.Sprintf("Retrying %s @ %s...", item.Repo.FullName, item.Branch)
+						return m, m.runScanWithBranch(item.Repo, item.Branch)
+					}
 				}
 			}
 		}
