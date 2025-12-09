@@ -2314,14 +2314,245 @@ func viewReport(reportPath string, format string, showDetails bool, scannerFilte
 				continue
 			}
 
-			printDetailedFindings(scanner, result)
+			printDetailedFindings(scanner, result, limit)
 		}
 	}
 
 	return nil
 }
 
-func printDetailedFindings(scanner string, result map[string]interface{}) {
+// exportFindingsToCSV exports all findings to a CSV file
+func exportFindingsToCSV(report *ScanReport, scannerFilter string, outputFile string, limit int) error {
+	file, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create CSV file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	// Write UTF-8 BOM for Excel compatibility
+	_, _ = file.WriteString("\xEF\xBB\xBF")
+
+	// Track total rows written
+	totalRows := 0
+
+	for _, scanner := range report.Scanners {
+		if scannerFilter != "" && scanner != scannerFilter {
+			continue
+		}
+		result, ok := report.Results[scanner].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		switch scanner {
+		case "opengrep":
+			rows, err := exportOpengrepToCSV(file, result, limit, totalRows == 0)
+			if err != nil {
+				return err
+			}
+			totalRows += rows
+
+		case "trivy":
+			rows, err := exportTrivyToCSV(file, result, limit, totalRows == 0)
+			if err != nil {
+				return err
+			}
+			totalRows += rows
+
+		case "trufflehog":
+			rows, err := exportTrufflehogToCSV(file, result, limit, totalRows == 0)
+			if err != nil {
+				return err
+			}
+			totalRows += rows
+		}
+	}
+
+	fmt.Printf("Exported %d findings to %s\n", totalRows, outputFile)
+	return nil
+}
+
+// escapeCSV escapes a string for CSV output
+func escapeCSV(s string) string {
+	// Replace newlines with space
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	// If contains comma, quote, or space, wrap in quotes and escape internal quotes
+	if strings.ContainsAny(s, ",\"\t") {
+		s = "\"" + strings.ReplaceAll(s, "\"", "\"\"") + "\""
+	}
+	return s
+}
+
+func exportOpengrepToCSV(file *os.File, result map[string]interface{}, limit int, writeHeader bool) (int, error) {
+	findings, ok := result["findings"].([]interface{})
+	if !ok || len(findings) == 0 {
+		return 0, nil
+	}
+
+	if writeHeader {
+		_, _ = file.WriteString("Scanner,Severity,Category,Rule ID,File,Line,Message\n")
+	}
+
+	count := 0
+	for _, f := range findings {
+		if limit > 0 && count >= limit {
+			break
+		}
+		finding, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		severity := "-"
+		message := "-"
+		checkID := "-"
+		category := "-"
+		path := "-"
+		line := "-"
+
+		if extra, ok := finding["extra"].(map[string]interface{}); ok {
+			if s, ok := extra["severity"].(string); ok {
+				severity = s
+			}
+			if m, ok := extra["message"].(string); ok {
+				message = m
+			}
+			if metadata, ok := extra["metadata"].(map[string]interface{}); ok {
+				if cat, ok := metadata["category"].(string); ok {
+					category = cat
+				}
+			}
+		}
+		if c, ok := finding["check_id"].(string); ok {
+			checkID = cleanCheckID(c)
+		}
+		if p, ok := finding["path"].(string); ok {
+			path = cleanPath(p)
+		}
+		if start, ok := finding["start"].(map[string]interface{}); ok {
+			if l, ok := start["line"].(float64); ok {
+				line = fmt.Sprintf("%d", int(l))
+			}
+		}
+
+		_, _ = fmt.Fprintf(file, "opengrep,%s,%s,%s,%s,%s,%s\n",
+			escapeCSV(severity), escapeCSV(category), escapeCSV(checkID),
+			escapeCSV(path), escapeCSV(line), escapeCSV(message))
+		count++
+	}
+
+	return count, nil
+}
+
+func exportTrivyToCSV(file *os.File, result map[string]interface{}, limit int, writeHeader bool) (int, error) {
+	results, ok := result["results"].([]interface{})
+	if !ok || len(results) == 0 {
+		return 0, nil
+	}
+
+	if writeHeader {
+		_, _ = file.WriteString("Scanner,Severity,CVE,Package,File,Installed Version,Fixed Version,Title\n")
+	}
+
+	count := 0
+	for _, r := range results {
+		res, ok := r.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		target := getString(res, "Target")
+		vulns, ok := res["Vulnerabilities"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, v := range vulns {
+			if limit > 0 && count >= limit {
+				break
+			}
+			vuln, ok := v.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			_, _ = fmt.Fprintf(file, "trivy,%s,%s,%s,%s,%s,%s,%s\n",
+				escapeCSV(getString(vuln, "Severity")),
+				escapeCSV(getString(vuln, "VulnerabilityID")),
+				escapeCSV(getString(vuln, "PkgName")),
+				escapeCSV(cleanPath(target)),
+				escapeCSV(getString(vuln, "InstalledVersion")),
+				escapeCSV(getString(vuln, "FixedVersion")),
+				escapeCSV(getString(vuln, "Title")))
+			count++
+		}
+		if limit > 0 && count >= limit {
+			break
+		}
+	}
+
+	return count, nil
+}
+
+func exportTrufflehogToCSV(file *os.File, result map[string]interface{}, limit int, writeHeader bool) (int, error) {
+	findings, ok := result["findings"].([]interface{})
+	if !ok || len(findings) == 0 {
+		return 0, nil
+	}
+
+	if writeHeader {
+		_, _ = file.WriteString("Scanner,Verified,Detector,File,Line,Redacted\n")
+	}
+
+	count := 0
+	for _, f := range findings {
+		if limit > 0 && count >= limit {
+			break
+		}
+		finding, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		verified := "No"
+		if v, ok := finding["Verified"].(bool); ok && v {
+			verified = "Yes"
+		}
+		detector := getString(finding, "DetectorName")
+		filePath := "-"
+		line := "-"
+		redacted := getString(finding, "Redacted")
+
+		if sm, ok := finding["SourceMetadata"].(map[string]interface{}); ok {
+			if data, ok := sm["Data"].(map[string]interface{}); ok {
+				if git, ok := data["Git"].(map[string]interface{}); ok {
+					if fp, ok := git["file"].(string); ok && fp != "" {
+						filePath = fp
+					}
+					if l, ok := git["line"].(float64); ok && l > 0 {
+						line = fmt.Sprintf("%d", int(l))
+					}
+				}
+				if fs, ok := data["Filesystem"].(map[string]interface{}); ok {
+					if fp, ok := fs["file"].(string); ok && fp != "" {
+						filePath = fp
+					}
+					if l, ok := fs["line"].(float64); ok && l > 0 {
+						line = fmt.Sprintf("%d", int(l))
+					}
+				}
+			}
+		}
+
+		_, _ = fmt.Fprintf(file, "trufflehog,%s,%s,%s,%s,%s\n",
+			escapeCSV(verified), escapeCSV(detector), escapeCSV(filePath),
+			escapeCSV(line), escapeCSV(redacted))
+		count++
+	}
+
+	return count, nil
+}
+
+func printDetailedFindings(scanner string, result map[string]interface{}, limit int) {
 	fmt.Printf("\n=== %s Findings ===\n\n", strings.ToUpper(scanner))
 
 	findings, hasFindings := result["findings"].([]interface{})
@@ -2330,10 +2561,10 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 		return
 	}
 
-	// Limit to first 20 findings
+	// Apply limit if specified (0 = no limit, show all)
 	displayCount := len(findings)
-	if displayCount > 20 {
-		displayCount = 20
+	if limit > 0 && displayCount > limit {
+		displayCount = limit
 	}
 
 	table := tablewriter.NewWriter(os.Stdout)
@@ -2384,7 +2615,7 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 		}
 
 	case "trivy":
-		table.Header([]string{"#", "Severity", "CVE", "Package", "Version", "Fixed"})
+		table.Header([]string{"#", "Severity", "CVE", "Package", "File", "Version", "Fixed"})
 		if results, ok := result["results"].([]interface{}); ok {
 			count := 0
 			for _, r := range results {
@@ -2392,12 +2623,14 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 				if !ok {
 					continue
 				}
+				target := getString(res, "Target")
 				vulns, ok := res["Vulnerabilities"].([]interface{})
 				if !ok {
 					continue
 				}
 				for _, v := range vulns {
-					if count >= displayCount {
+					// Apply limit if specified (0 = no limit)
+					if limit > 0 && count >= limit {
 						break
 					}
 					vuln, ok := v.(map[string]interface{})
@@ -2410,9 +2643,14 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 						getString(vuln, "Severity"),
 						truncate(getString(vuln, "VulnerabilityID"), 20),
 						truncate(getString(vuln, "PkgName"), 20),
+						truncate(cleanPath(target), 25),
 						truncate(getString(vuln, "InstalledVersion"), 15),
 						truncate(getString(vuln, "FixedVersion"), 15),
 					})
+				}
+				// Break outer loop too if limit reached
+				if limit > 0 && count >= limit {
+					break
 				}
 			}
 		}
@@ -2461,8 +2699,10 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 
 	_ = table.Render()
 
-	if len(findings) > displayCount {
-		fmt.Printf("\n... and %d more findings (showing first %d)\n", len(findings)-displayCount, displayCount)
+	if limit > 0 && len(findings) > displayCount {
+		fmt.Printf("\n... and %d more findings (showing first %d, use --limit 0 for all)\n", len(findings)-displayCount, displayCount)
+	} else {
+		fmt.Printf("\nTotal: %d findings\n", len(findings))
 	}
 }
 
