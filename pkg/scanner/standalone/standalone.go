@@ -336,6 +336,16 @@ type OpenGrepFinding struct {
 func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]interface{}, error) {
 	rulesPath := filepath.Join(assetsDir, "opengrep-rules")
 
+	// Check if rules directory exists
+	if _, err := os.Stat(rulesPath); os.IsNotExist(err) {
+		return map[string]interface{}{
+			"status":         "FAILED",
+			"error":          fmt.Sprintf("opengrep rules not found at %s", rulesPath),
+			"findings_count": 0,
+			"findings":       []interface{}{},
+		}, fmt.Errorf("opengrep rules not found at %s", rulesPath)
+	}
+
 	// Create temp output file
 	tmpFile, err := os.CreateTemp("", "opengrep-*.json")
 	if err != nil {
@@ -368,28 +378,84 @@ func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]in
 
 	cmd := exec.CommandContext(ctx, "opengrep", args...)
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// opengrep may return non-zero even on success with findings
-		slog.Debug("opengrep command output", "output", string(output))
+	// Capture both stdout and stderr
+	output, cmdErr := cmd.CombinedOutput()
+
+	// Always log the command output for debugging (visible when ACTIONS_STEP_DEBUG=true)
+	cmdOutput := string(output)
+	if cmdOutput != "" {
+		slog.Debug("opengrep command output", "output", cmdOutput)
 	}
 
-	// Read and parse results
+	// Read the output file
 	data, err := os.ReadFile(tmpFile.Name())
 	if err != nil {
-		return nil, fmt.Errorf("failed to read opengrep output: %w", err)
+		slog.Error("Failed to read opengrep output file",
+			"file", tmpFile.Name(),
+			"error", err,
+			"cmd_output", cmdOutput,
+		)
+		return map[string]interface{}{
+			"status":         "FAILED",
+			"error":          fmt.Sprintf("failed to read output: %v", err),
+			"cmd_output":     cmdOutput,
+			"findings_count": 0,
+			"findings":       []interface{}{},
+		}, fmt.Errorf("failed to read opengrep output: %w", err)
+	}
+
+	// Handle empty output file
+	if len(data) == 0 {
+		errMsg := "opengrep produced empty output"
+		if cmdErr != nil {
+			errMsg = fmt.Sprintf("opengrep failed: %v", cmdErr)
+		}
+		slog.Error("OpenGrep produced no output",
+			"error", errMsg,
+			"cmd_output", cmdOutput,
+			"exit_error", cmdErr,
+		)
+		// Print to stdout for GitHub Actions visibility
+		fmt.Printf("[DEBUG] OpenGrep error - command output:\n%s\n", cmdOutput)
+
+		return map[string]interface{}{
+			"status":         "FAILED",
+			"error":          errMsg,
+			"cmd_output":     cmdOutput,
+			"findings_count": 0,
+			"findings":       []interface{}{},
+		}, fmt.Errorf("%s", errMsg)
 	}
 
 	// OpenGrep outputs directly as the results object, not wrapped
 	var results OpenGrepResults
 	if err := json.Unmarshal(data, &results); err != nil {
-		// Log the first 500 chars of data for debugging
+		// Log debugging info
 		preview := string(data)
-		if len(preview) > 500 {
-			preview = preview[:500]
+		if len(preview) > 1000 {
+			preview = preview[:1000] + "...(truncated)"
 		}
-		slog.Debug("Failed to parse opengrep output", "preview", preview, "error", err)
-		return nil, fmt.Errorf("failed to parse opengrep output: %w", err)
+		slog.Error("Failed to parse opengrep JSON output",
+			"preview", preview,
+			"error", err,
+			"data_length", len(data),
+			"cmd_output", cmdOutput,
+		)
+		// Print to stdout for GitHub Actions visibility
+		fmt.Printf("[DEBUG] OpenGrep JSON parse error:\n")
+		fmt.Printf("  Error: %v\n", err)
+		fmt.Printf("  Data length: %d bytes\n", len(data))
+		fmt.Printf("  Data preview: %s\n", preview)
+		fmt.Printf("  Command output: %s\n", cmdOutput)
+
+		return map[string]interface{}{
+			"status":         "FAILED",
+			"error":          fmt.Sprintf("failed to parse output: %v", err),
+			"raw_output":     preview,
+			"cmd_output":     cmdOutput,
+			"findings_count": 0,
+			"findings":       []interface{}{},
+		}, fmt.Errorf("failed to parse opengrep output: %w", err)
 	}
 
 	// Count findings by severity

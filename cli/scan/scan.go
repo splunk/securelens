@@ -1970,6 +1970,8 @@ func newResultsCmd() *cobra.Command {
 		format      string
 		showDetails bool
 		scanner     string
+		outputFile  string
+		limit       int
 	)
 
 	cmd := &cobra.Command{
@@ -1987,7 +1989,13 @@ Examples:
   securelens scan results --list
 
   # Show detailed findings for a specific scanner
-  securelens scan results reports/splunk/securelens/main/abc123/latest.json --details --scanner opengrep`,
+  securelens scan results reports/splunk/securelens/main/abc123/latest.json --details --scanner opengrep
+
+  # Export all findings to CSV
+  securelens scan results reports/path/latest.json --details --output findings.csv
+
+  # Show all findings (no limit)
+  securelens scan results reports/path/latest.json --details --limit 0`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			listReports, _ := cmd.Flags().GetBool("list")
@@ -2000,7 +2008,7 @@ Examples:
 				return fmt.Errorf("report path required (or use --list to see available reports)")
 			}
 
-			return viewReport(args[0], format, showDetails, scanner)
+			return viewReport(args[0], format, showDetails, scanner, outputFile, limit)
 		},
 	}
 
@@ -2008,6 +2016,8 @@ Examples:
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
 	cmd.Flags().BoolVar(&showDetails, "details", false, "show detailed findings")
 	cmd.Flags().StringVar(&scanner, "scanner", "", "filter findings by scanner (opengrep, trivy, trufflehog)")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "output file for CSV export (e.g., findings.csv)")
+	cmd.Flags().IntVar(&limit, "limit", 0, "limit number of findings to display (0 = no limit, default: no limit)")
 	cmd.Flags().Bool("list", false, "list available reports")
 
 	return cmd
@@ -2060,17 +2070,187 @@ func listSavedReports(reportsDir string) error {
 	return nil
 }
 
-func viewReport(reportPath string, format string, showDetails bool, scannerFilter string) error {
+// parseReportFile parses a report file and handles multiple formats:
+// 1. ScanReport - combined report with all scanners
+// 2. StandaloneScanResult - raw output from a single scanner (opengrep-raw-*.json, etc.)
+// 3. Raw scanner output - direct output from opengrep/trivy/trufflehog
+func parseReportFile(data []byte, reportPath string) (*ScanReport, error) {
+	// Try to parse as StandaloneScanResult FIRST (raw scanner output wrapper)
+	// This format has: scanner, status, start_time, end_time, duration, results
+	// We check this first because ScanReport also has "status" field which causes false matches
+	var standaloneResult standalone.StandaloneScanResult
+	if err := json.Unmarshal(data, &standaloneResult); err == nil {
+		// StandaloneScanResult has "scanner" field which ScanReport doesn't have
+		if standaloneResult.Scanner != "" && standaloneResult.Results != nil {
+			// Convert StandaloneScanResult to ScanReport format
+			return &ScanReport{
+				Repository: "(raw scanner output)",
+				Status:     standaloneResult.Status,
+				Timestamp:  standaloneResult.StartTime.Format(time.RFC3339),
+				Scanners:   []string{standaloneResult.Scanner},
+				Results: map[string]interface{}{
+					standaloneResult.Scanner: standaloneResult.Results,
+				},
+			}, nil
+		}
+	}
+
+	// Try to parse as a ScanReport (combined report)
+	var report ScanReport
+	if err := json.Unmarshal(data, &report); err == nil {
+		// Check if it's a valid ScanReport (has scanners array or repository)
+		if report.Repository != "" || len(report.Scanners) > 0 {
+			return &report, nil
+		}
+	}
+
+	// Try to detect raw scanner output by filename and parse accordingly
+	filename := filepath.Base(reportPath)
+	scannerName := detectScannerFromFilename(filename)
+
+	switch scannerName {
+	case "opengrep":
+		// OpenGrep direct output has "results" array
+		var ogResults map[string]interface{}
+		if err := json.Unmarshal(data, &ogResults); err == nil {
+			if results, ok := ogResults["results"].([]interface{}); ok {
+				// Count by severity
+				severityCounts := make(map[string]int)
+				for _, r := range results {
+					if finding, ok := r.(map[string]interface{}); ok {
+						if extra, ok := finding["extra"].(map[string]interface{}); ok {
+							if sev, ok := extra["severity"].(string); ok {
+								severityCounts[sev]++
+							}
+						}
+					}
+				}
+				return &ScanReport{
+					Repository: "(raw opengrep output)",
+					Status:     "COMPLETE",
+					Scanners:   []string{"opengrep"},
+					Results: map[string]interface{}{
+						"opengrep": map[string]interface{}{
+							"status":         "COMPLETE",
+							"findings_count": len(results),
+							"findings":       results,
+							"by_severity":    severityCounts,
+						},
+					},
+				}, nil
+			}
+		}
+
+	case "trivy":
+		// Trivy output has "Results" array
+		var trivyResults map[string]interface{}
+		if err := json.Unmarshal(data, &trivyResults); err == nil {
+			vulnCount := 0
+			severityCounts := make(map[string]int)
+			if results, ok := trivyResults["Results"].([]interface{}); ok {
+				for _, r := range results {
+					if result, ok := r.(map[string]interface{}); ok {
+						if vulns, ok := result["Vulnerabilities"].([]interface{}); ok {
+							vulnCount += len(vulns)
+							for _, v := range vulns {
+								if vuln, ok := v.(map[string]interface{}); ok {
+									if sev, ok := vuln["Severity"].(string); ok {
+										severityCounts[sev]++
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			return &ScanReport{
+				Repository: "(raw trivy output)",
+				Status:     "COMPLETE",
+				Scanners:   []string{"trivy"},
+				Results: map[string]interface{}{
+					"trivy": map[string]interface{}{
+						"status":                "COMPLETE",
+						"vulnerabilities_count": vulnCount,
+						"by_severity":           severityCounts,
+						"results":               trivyResults["Results"],
+					},
+				},
+			}, nil
+		}
+
+	case "trufflehog":
+		// Trufflehog outputs NDJSON
+		var findings []map[string]interface{}
+		verifiedCount := 0
+		unverifiedCount := 0
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var finding map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &finding); err == nil {
+				if _, ok := finding["DetectorName"]; ok {
+					findings = append(findings, finding)
+					if verified, ok := finding["Verified"].(bool); ok && verified {
+						verifiedCount++
+					} else {
+						unverifiedCount++
+					}
+				}
+			}
+		}
+		return &ScanReport{
+			Repository: "(raw trufflehog output)",
+			Status:     "COMPLETE",
+			Scanners:   []string{"trufflehog"},
+			Results: map[string]interface{}{
+				"trufflehog": map[string]interface{}{
+					"status":             "COMPLETE",
+					"findings_count":     len(findings),
+					"verified_secrets":   verifiedCount,
+					"unverified_secrets": unverifiedCount,
+					"findings":           findings,
+				},
+			},
+		}, nil
+	}
+
+	// If we couldn't parse it, return an error
+	return nil, fmt.Errorf("unrecognized report format")
+}
+
+// detectScannerFromFilename extracts scanner name from filename
+func detectScannerFromFilename(filename string) string {
+	filename = strings.ToLower(filename)
+	if strings.Contains(filename, "trufflehog") {
+		return "trufflehog"
+	}
+	if strings.Contains(filename, "opengrep") || strings.Contains(filename, "semgrep") {
+		return "opengrep"
+	}
+	if strings.Contains(filename, "trivy") {
+		return "trivy"
+	}
+	return strings.TrimSuffix(filename, ".json")
+}
+
+func viewReport(reportPath string, format string, showDetails bool, scannerFilter string, outputFile string, limit int) error {
 	// Read the report file
 	data, err := os.ReadFile(reportPath)
 	if err != nil {
 		return fmt.Errorf("failed to read report: %w", err)
 	}
 
-	var report ScanReport
-	if err := json.Unmarshal(data, &report); err != nil {
+	// Try to parse and detect the report type
+	report, err := parseReportFile(data, reportPath)
+	if err != nil {
 		return fmt.Errorf("failed to parse report: %w", err)
 	}
+
+	// Check if CSV output is requested
+	isCSV := strings.HasSuffix(strings.ToLower(outputFile), ".csv")
 
 	switch format {
 	case "json":
@@ -2081,6 +2261,11 @@ func viewReport(reportPath string, format string, showDetails bool, scannerFilte
 		output, _ := yaml.Marshal(report)
 		fmt.Println(string(output))
 		return nil
+	}
+
+	// If CSV output requested, export findings
+	if isCSV && showDetails {
+		return exportFindingsToCSV(report, scannerFilter, outputFile, limit)
 	}
 
 	// Table format
@@ -2155,7 +2340,7 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 
 	switch scanner {
 	case "opengrep":
-		table.Header([]string{"#", "Severity", "Rule", "File", "Line", "Message"})
+		table.Header([]string{"#", "Severity", "Category", "Rule ID", "File", "Line", "Message"})
 		for i, f := range findings[:displayCount] {
 			finding, ok := f.(map[string]interface{})
 			if !ok {
@@ -2164,6 +2349,7 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 			severity := "-"
 			message := "-"
 			checkID := "-"
+			category := "-"
 			path := "-"
 			line := "-"
 
@@ -2172,21 +2358,29 @@ func printDetailedFindings(scanner string, result map[string]interface{}) {
 					severity = s
 				}
 				if m, ok := extra["message"].(string); ok {
-					message = truncate(m, 50)
+					message = truncate(m, 40)
+				}
+				// Extract category from metadata
+				if metadata, ok := extra["metadata"].(map[string]interface{}); ok {
+					if cat, ok := metadata["category"].(string); ok {
+						category = truncate(cat, 15)
+					}
 				}
 			}
 			if c, ok := finding["check_id"].(string); ok {
-				checkID = truncate(c, 30)
+				// Clean up check_id - extract just the rule name
+				checkID = cleanCheckID(c)
 			}
 			if p, ok := finding["path"].(string); ok {
-				path = truncate(filepath.Base(p), 25)
+				// Clean up path - remove temp directory prefix
+				path = cleanPath(p)
 			}
 			if start, ok := finding["start"].(map[string]interface{}); ok {
 				if l, ok := start["line"].(float64); ok {
 					line = fmt.Sprintf("%d", int(l))
 				}
 			}
-			_ = table.Append([]string{fmt.Sprintf("%d", i+1), severity, checkID, path, line, message})
+			_ = table.Append([]string{fmt.Sprintf("%d", i+1), severity, category, truncate(checkID, 25), truncate(path, 30), line, message})
 		}
 
 	case "trivy":
@@ -2284,4 +2478,51 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// cleanCheckID extracts a clean rule ID from the full check_id path
+// e.g., "assets.opengrep-rules.python.flask.security.injection" -> "python.flask.security.injection"
+func cleanCheckID(checkID string) string {
+	// Remove common prefixes like "assets.opengrep-rules." or similar
+	prefixes := []string{
+		"assets.opengrep-rules.",
+		"opengrep-rules.",
+		"semgrep-rules.",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(checkID, prefix) {
+			checkID = strings.TrimPrefix(checkID, prefix)
+			break
+		}
+	}
+	return checkID
+}
+
+// cleanPath removes temp directory prefixes from file paths
+// e.g., "/var/folders/.../securelens-scan-xxx/make_lib/script.py" -> "make_lib/script.py"
+func cleanPath(path string) string {
+	// Look for common temp directory patterns and extract the relative path
+	markers := []string{
+		"/securelens-",      // securelens temp dirs
+		"/tmp/",             // general tmp
+		"/var/folders/",     // macOS temp
+		"\\Temp\\",          // Windows temp
+	}
+
+	for _, marker := range markers {
+		if idx := strings.Index(path, marker); idx >= 0 {
+			// Find the end of the temp dir name (next path separator after marker)
+			remaining := path[idx+len(marker):]
+			if sepIdx := strings.IndexAny(remaining, "/\\"); sepIdx >= 0 {
+				// Return everything after the temp directory
+				return remaining[sepIdx+1:]
+			}
+		}
+	}
+
+	// If no temp dir found, just return the path as-is or basename for very long paths
+	if len(path) > 60 {
+		return "..." + path[len(path)-57:]
+	}
+	return path
 }
