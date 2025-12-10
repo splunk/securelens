@@ -1411,7 +1411,7 @@ func (m Model) viewVulnsDb() string {
 		b.WriteString(SuccessStyle.Render(fmt.Sprintf("%d selected", selectedCount)))
 		b.WriteString(" | ")
 	}
-	b.WriteString(HelpStyle.Render("tab: switch type | /: search | f: filter status | s: sort | space: select | a: select all | enter: bulk actions"))
+	b.WriteString(HelpStyle.Render("tab: switch type | /: search | f: filter status | →: expand | ←: collapse | space: select | a: all | enter: actions"))
 
 	return b.String()
 }
@@ -1454,21 +1454,42 @@ func (m Model) renderSCAList() string {
 		// Severity color
 		sevStyle := getSeverityStyle(item.Severity)
 
-		// Truncate fields
-		provider := truncateString(item.Provider, 6)
-		repo := truncateString(item.Repository, 18)
-		branch := truncateString(item.Branch, 8)
-		commit := truncateString(item.Commit, 6)
-		pkg := truncateString(item.Package, 23)
-		cve := truncateString(item.VulnerabilityID, 13)
+		// Check if this row should be expanded (current row + expanded mode)
+		if isCurrent && m.vulnRowExpanded {
+			// Show full content for expanded row
+			b.WriteString(fmt.Sprintf("%s%s\n", cursor, selectIndicator))
+			b.WriteString(fmt.Sprintf("    Provider: %s\n", item.Provider))
+			b.WriteString(fmt.Sprintf("    Repo:     %s\n", item.Repository))
+			b.WriteString(fmt.Sprintf("    Branch:   %s\n", item.Branch))
+			b.WriteString(fmt.Sprintf("    Commit:   %s\n", item.Commit))
+			b.WriteString(fmt.Sprintf("    Severity: %s\n", sevStyle.Render(item.Severity)))
+			b.WriteString(fmt.Sprintf("    Package:  %s\n", item.Package))
+			b.WriteString(fmt.Sprintf("    Version:  %s\n", item.Version))
+			b.WriteString(fmt.Sprintf("    CVE:      %s\n", item.VulnerabilityID))
+			b.WriteString(fmt.Sprintf("    Title:    %s\n", item.Title))
+			b.WriteString(fmt.Sprintf("    Status:   %s\n", item.Status))
+			if item.JiraTicket != "" {
+				b.WriteString(fmt.Sprintf("    Jira:     %s\n", item.JiraTicket))
+			}
+			b.WriteString(fmt.Sprintf("    First:    %s  Last: %s\n", item.FirstSeen, item.LastSeen))
+			b.WriteString("\n")
+		} else {
+			// Truncate fields for normal view
+			provider := truncateString(item.Provider, 6)
+			repo := truncateString(item.Repository, 18)
+			branch := truncateString(item.Branch, 8)
+			commit := truncateString(item.Commit, 6)
+			pkg := truncateString(item.Package, 23)
+			cve := truncateString(item.VulnerabilityID, 13)
 
-		line := fmt.Sprintf("%s%s%-8s %-20s %-10s %-8s %-10s %-25s %-15s %-8s\n",
-			cursor, selectIndicator,
-			provider, repo, branch, commit,
-			sevStyle.Render(item.Severity),
-			pkg, cve, item.Status)
+			line := fmt.Sprintf("%s%s%-8s %-20s %-10s %-8s %-10s %-25s %-15s %-8s\n",
+				cursor, selectIndicator,
+				provider, repo, branch, commit,
+				sevStyle.Render(item.Severity),
+				pkg, cve, item.Status)
 
-		b.WriteString(line)
+			b.WriteString(line)
+		}
 	}
 
 	b.WriteString(fmt.Sprintf("\n%d/%d vulnerabilities", len(items), len(m.scaVulns)))
@@ -1511,20 +1532,43 @@ func (m Model) renderSASTList() string {
 
 		sevStyle := getSeverityStyle(item.Severity)
 
-		provider := truncateString(item.Provider, 6)
-		repo := truncateString(item.Repository, 16)
-		branch := truncateString(item.Branch, 8)
-		commit := truncateString(item.Commit, 6)
-		rule := truncateString(item.CheckID, 23)
-		file := truncateString(item.FilePath, 18)
+		// Check if this row should be expanded (current row + expanded mode)
+		if isCurrent && m.vulnRowExpanded {
+			// Show full content for expanded row
+			b.WriteString(fmt.Sprintf("%s%s\n", cursor, selectIndicator))
+			b.WriteString(fmt.Sprintf("    Provider: %s\n", item.Provider))
+			b.WriteString(fmt.Sprintf("    Repo:     %s\n", item.Repository))
+			b.WriteString(fmt.Sprintf("    Branch:   %s\n", item.Branch))
+			b.WriteString(fmt.Sprintf("    Commit:   %s\n", item.Commit))
+			b.WriteString(fmt.Sprintf("    Severity: %s\n", sevStyle.Render(item.Severity)))
+			b.WriteString(fmt.Sprintf("    Scanner:  %s\n", item.Scanner))
+			b.WriteString(fmt.Sprintf("    Rule:     %s\n", item.CheckID))
+			b.WriteString(fmt.Sprintf("    File:     %s\n", item.FilePath))
+			b.WriteString(fmt.Sprintf("    Line:     %d\n", item.Line))
+			b.WriteString(fmt.Sprintf("    Message:  %s\n", item.Message))
+			b.WriteString(fmt.Sprintf("    Status:   %s\n", item.Status))
+			if item.JiraTicket != "" {
+				b.WriteString(fmt.Sprintf("    Jira:     %s\n", item.JiraTicket))
+			}
+			b.WriteString(fmt.Sprintf("    First:    %s  Last: %s\n", item.FirstSeen, item.LastSeen))
+			b.WriteString("\n")
+		} else {
+			// Truncate fields for normal view
+			provider := truncateString(item.Provider, 6)
+			repo := truncateString(item.Repository, 16)
+			branch := truncateString(item.Branch, 8)
+			commit := truncateString(item.Commit, 6)
+			rule := truncateString(item.CheckID, 23)
+			file := truncateString(item.FilePath, 18)
 
-		line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-25s %-20s %-6d %-8s\n",
-			cursor, selectIndicator,
-			provider, repo, branch, commit,
-			sevStyle.Render(item.Severity),
-			rule, file, item.Line, item.Status)
+			line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-25s %-20s %-6d %-8s\n",
+				cursor, selectIndicator,
+				provider, repo, branch, commit,
+				sevStyle.Render(item.Severity),
+				rule, file, item.Line, item.Status)
 
-		b.WriteString(line)
+			b.WriteString(line)
+		}
 	}
 
 	b.WriteString(fmt.Sprintf("\n%d/%d findings", len(items), len(m.sastVulns)))
@@ -1566,23 +1610,47 @@ func (m Model) renderSecretsList() string {
 		}
 
 		verified := SubtleStyle.Render("No")
+		verifiedLabel := "No"
 		if item.Verified {
 			verified = ErrorStyle.Render("YES")
+			verifiedLabel = "YES (ACTIVE SECRET!)"
 		}
 
-		provider := truncateString(item.Provider, 6)
-		repo := truncateString(item.Repository, 16)
-		branch := truncateString(item.Branch, 8)
-		commit := truncateString(item.Commit, 6)
-		detector := truncateString(item.DetectorName, 16)
-		file := truncateString(item.FilePath, 23)
+		// Check if this row should be expanded (current row + expanded mode)
+		if isCurrent && m.vulnRowExpanded {
+			// Show full content for expanded row
+			b.WriteString(fmt.Sprintf("%s%s\n", cursor, selectIndicator))
+			b.WriteString(fmt.Sprintf("    Provider: %s\n", item.Provider))
+			b.WriteString(fmt.Sprintf("    Repo:     %s\n", item.Repository))
+			b.WriteString(fmt.Sprintf("    Branch:   %s\n", item.Branch))
+			b.WriteString(fmt.Sprintf("    Commit:   %s\n", item.Commit))
+			b.WriteString(fmt.Sprintf("    Verified: %s\n", verifiedLabel))
+			b.WriteString(fmt.Sprintf("    Detector: %s\n", item.DetectorName))
+			b.WriteString(fmt.Sprintf("    File:     %s\n", item.FilePath))
+			b.WriteString(fmt.Sprintf("    Line:     %d\n", item.Line))
+			b.WriteString(fmt.Sprintf("    Severity: %s\n", item.Severity))
+			b.WriteString(fmt.Sprintf("    Status:   %s\n", item.Status))
+			if item.JiraTicket != "" {
+				b.WriteString(fmt.Sprintf("    Jira:     %s\n", item.JiraTicket))
+			}
+			b.WriteString(fmt.Sprintf("    First:    %s  Last: %s\n", item.FirstSeen, item.LastSeen))
+			b.WriteString("\n")
+		} else {
+			// Truncate fields for normal view
+			provider := truncateString(item.Provider, 6)
+			repo := truncateString(item.Repository, 16)
+			branch := truncateString(item.Branch, 8)
+			commit := truncateString(item.Commit, 6)
+			detector := truncateString(item.DetectorName, 16)
+			file := truncateString(item.FilePath, 23)
 
-		line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-18s %-25s %-6d %-8s\n",
-			cursor, selectIndicator,
-			provider, repo, branch, commit,
-			verified, detector, file, item.Line, item.Status)
+			line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-18s %-25s %-6d %-8s\n",
+				cursor, selectIndicator,
+				provider, repo, branch, commit,
+				verified, detector, file, item.Line, item.Status)
 
-		b.WriteString(line)
+			b.WriteString(line)
+		}
 	}
 
 	b.WriteString(fmt.Sprintf("\n%d/%d secrets", len(items), len(m.secretsVulns)))
@@ -1763,16 +1831,19 @@ func (m Model) updateVulnsDb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Up):
 		if m.vulnListIndex > 0 {
 			m.vulnListIndex--
+			m.vulnRowExpanded = false // Collapse when navigating
 		}
 	case key.Matches(msg, m.keys.Down):
 		if m.vulnListIndex < listLen-1 {
 			m.vulnListIndex++
+			m.vulnRowExpanded = false // Collapse when navigating
 		}
 	case key.Matches(msg, m.keys.PageUp):
 		m.vulnListIndex -= 10
 		if m.vulnListIndex < 0 {
 			m.vulnListIndex = 0
 		}
+		m.vulnRowExpanded = false // Collapse when navigating
 	case key.Matches(msg, m.keys.PageDown):
 		m.vulnListIndex += 10
 		if m.vulnListIndex >= listLen {
@@ -1781,6 +1852,7 @@ func (m Model) updateVulnsDb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.vulnListIndex < 0 {
 			m.vulnListIndex = 0
 		}
+		m.vulnRowExpanded = false // Collapse when navigating
 
 	// Row expansion (Right to expand, Left to collapse)
 	case key.Matches(msg, m.keys.Right):
@@ -1966,7 +2038,7 @@ func (m Model) viewLicenses() string {
 		b.WriteString(SuccessStyle.Render(fmt.Sprintf("%d selected", selectedCount)))
 		b.WriteString(" | ")
 	}
-	b.WriteString(HelpStyle.Render("/: search | f: filter status | space: select | a: select all | n: none | enter: bulk actions | r: refresh"))
+	b.WriteString(HelpStyle.Render("/: search | f: filter status | →: expand | ←: collapse | space: select | a: all | n: none | enter: actions"))
 
 	return b.String()
 }
@@ -2010,23 +2082,46 @@ func (m Model) renderLicenseList() string {
 		sevStyle := getSeverityStyle(item.Severity)
 		classStyle := getClassificationStyle(item.Classification)
 
-		// Truncate fields
-		provider := truncateString(item.Provider, 6)
-		repo := truncateString(item.Repository, 16)
-		branch := truncateString(item.Branch, 8)
-		commit := truncateString(item.Commit, 6)
-		pkg := truncateString(item.Package+"@"+item.Version, 20)
-		license := truncateString(item.License, 10)
-		class := truncateString(item.Classification, 10)
+		// Check if this row should be expanded (current row + expanded mode)
+		if isCurrent && m.licenseRowExpanded {
+			// Show full content for expanded row
+			b.WriteString(fmt.Sprintf("%s%s\n", cursor, selectIndicator))
+			b.WriteString(fmt.Sprintf("    Provider:       %s\n", item.Provider))
+			b.WriteString(fmt.Sprintf("    Repo:           %s\n", item.Repository))
+			b.WriteString(fmt.Sprintf("    Branch:         %s\n", item.Branch))
+			b.WriteString(fmt.Sprintf("    Commit:         %s\n", item.Commit))
+			b.WriteString(fmt.Sprintf("    Severity:       %s\n", sevStyle.Render(item.Severity)))
+			b.WriteString(fmt.Sprintf("    Classification: %s\n", classStyle.Render(item.Classification)))
+			b.WriteString(fmt.Sprintf("    Package:        %s\n", item.Package))
+			b.WriteString(fmt.Sprintf("    Version:        %s\n", item.Version))
+			b.WriteString(fmt.Sprintf("    License:        %s\n", item.License))
+			b.WriteString(fmt.Sprintf("    Pkg Path:       %s\n", item.PkgPath))
+			b.WriteString(fmt.Sprintf("    Pkg Type:       %s\n", item.PkgType))
+			b.WriteString(fmt.Sprintf("    Status:         %s\n", item.Status))
+			if item.JiraTicket != "" {
+				b.WriteString(fmt.Sprintf("    Jira:           %s\n", item.JiraTicket))
+			}
+			b.WriteString(fmt.Sprintf("    First:          %s  Last: %s\n", item.FirstSeen, item.LastSeen))
+			b.WriteString("\n")
+		} else {
+			// Truncate fields for normal view
+			provider := truncateString(item.Provider, 6)
+			repo := truncateString(item.Repository, 16)
+			branch := truncateString(item.Branch, 8)
+			commit := truncateString(item.Commit, 6)
+			pkg := truncateString(item.Package+"@"+item.Version, 20)
+			license := truncateString(item.License, 10)
+			class := truncateString(item.Classification, 10)
 
-		line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-12s %-22s %-12s %-8s\n",
-			cursor, selectIndicator,
-			provider, repo, branch, commit,
-			sevStyle.Render(item.Severity),
-			classStyle.Render(class),
-			pkg, license, item.Status)
+			line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-12s %-22s %-12s %-8s\n",
+				cursor, selectIndicator,
+				provider, repo, branch, commit,
+				sevStyle.Render(item.Severity),
+				classStyle.Render(class),
+				pkg, license, item.Status)
 
-		b.WriteString(line)
+			b.WriteString(line)
+		}
 	}
 
 	b.WriteString(fmt.Sprintf("\n%d/%d license findings", len(items), len(m.licenseVulns)))
@@ -2161,16 +2256,19 @@ func (m Model) updateLicenses(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Up):
 		if m.licenseListIndex > 0 {
 			m.licenseListIndex--
+			m.licenseRowExpanded = false // Collapse when navigating
 		}
 	case key.Matches(msg, m.keys.Down):
 		if m.licenseListIndex < listLen-1 {
 			m.licenseListIndex++
+			m.licenseRowExpanded = false // Collapse when navigating
 		}
 	case key.Matches(msg, m.keys.PageUp):
 		m.licenseListIndex -= 10
 		if m.licenseListIndex < 0 {
 			m.licenseListIndex = 0
 		}
+		m.licenseRowExpanded = false // Collapse when navigating
 	case key.Matches(msg, m.keys.PageDown):
 		m.licenseListIndex += 10
 		if m.licenseListIndex >= listLen {
@@ -2179,6 +2277,13 @@ func (m Model) updateLicenses(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.licenseListIndex < 0 {
 			m.licenseListIndex = 0
 		}
+		m.licenseRowExpanded = false // Collapse when navigating
+
+	// Row expansion (Right to expand, Left to collapse)
+	case key.Matches(msg, m.keys.Right):
+		m.licenseRowExpanded = true
+	case key.Matches(msg, m.keys.Left):
+		m.licenseRowExpanded = false
 
 	// Search
 	case key.Matches(msg, m.keys.Search):
