@@ -43,9 +43,24 @@ func NewClient(config WaitConfig) *Client {
 	}
 }
 
+// ProgressFunc is a callback for sending progress messages
+type ProgressFunc func(msg string)
+
 // WaitForJob polls the SRS job URL until all jobs are complete
 func (c *Client) WaitForJob(ctx context.Context, jobURL string) (*SRSJobResponse, error) {
-	slog.Info("Starting to wait for SRS job", "job_url", jobURL)
+	return c.WaitForJobWithProgress(ctx, jobURL, nil)
+}
+
+// WaitForJobWithProgress polls the SRS job URL until all jobs are complete, with progress callbacks
+func (c *Client) WaitForJobWithProgress(ctx context.Context, jobURL string, progress ProgressFunc) (*SRSJobResponse, error) {
+	sendProgress := func(msg string) {
+		if progress != nil {
+			progress(msg)
+		}
+		slog.Info(msg)
+	}
+
+	sendProgress(fmt.Sprintf("Waiting for SRS job: %s", jobURL))
 
 	// Normalize URL
 	jobURL = c.normalizeURL(jobURL)
@@ -71,7 +86,7 @@ func (c *Client) WaitForJob(ctx context.Context, jobURL string) (*SRSJobResponse
 				"max_timeout", c.config.MaxTimeout.String(),
 			)
 			if lastResponse != nil && len(lastResponse.ServiceResponse.Jobs) > 0 {
-				slog.Info("Returning partial results due to timeout")
+				sendProgress("Timeout reached, returning partial results")
 				return lastResponse, nil
 			}
 			return nil, fmt.Errorf("maximum timeout reached waiting for job completion")
@@ -84,7 +99,7 @@ func (c *Client) WaitForJob(ctx context.Context, jobURL string) (*SRSJobResponse
 			retries--
 			if retries <= 0 {
 				if lastResponse != nil && len(lastResponse.ServiceResponse.Jobs) > 0 {
-					slog.Info("Returning partial results due to persistent errors")
+					sendProgress("Max retries reached, returning partial results")
 					return lastResponse, nil
 				}
 				return nil, fmt.Errorf("maximum retries exceeded: %w", err)
@@ -110,6 +125,14 @@ func (c *Client) WaitForJob(ctx context.Context, jobURL string) (*SRSJobResponse
 		statuses := c.getJobStatuses(response)
 		allComplete := c.allJobsTerminal(response)
 
+		// Build status summary string
+		statusParts := []string{}
+		for status, count := range statuses {
+			statusParts = append(statusParts, fmt.Sprintf("%s:%d", status, count))
+		}
+		statusStr := strings.Join(statusParts, " ")
+		sendProgress(fmt.Sprintf("SRS status [%s]: %s", elapsed.Round(time.Second), statusStr))
+
 		slog.Info("SRS job status update",
 			"elapsed", elapsed.Round(time.Second).String(),
 			"statuses", statuses,
@@ -117,10 +140,7 @@ func (c *Client) WaitForJob(ctx context.Context, jobURL string) (*SRSJobResponse
 		)
 
 		if allComplete {
-			slog.Info("All SRS jobs completed",
-				"elapsed", elapsed.Round(time.Second).String(),
-				"job_count", len(response.ServiceResponse.Jobs),
-			)
+			sendProgress(fmt.Sprintf("All %d SRS jobs completed in %s", len(response.ServiceResponse.Jobs), elapsed.Round(time.Second)))
 			return response, nil
 		}
 
