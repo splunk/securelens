@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
@@ -41,6 +42,26 @@ func runUI(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		slog.Warn("Failed to load config, continuing with defaults", "error", err)
 		cfg = &config.Config{}
+	}
+
+	// Redirect slog to a file during TUI mode to prevent logs from interfering
+	// with the alternate screen display
+	logFile, err := os.CreateTemp("", "securelens-tui-*.log")
+	if err != nil {
+		// If we can't create a log file, discard logs instead
+		slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	} else {
+		defer logFile.Close()
+		slog.SetDefault(slog.New(slog.NewTextHandler(logFile, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		})))
+		// Store log file path for later reference
+		defer func() {
+			// Print log file location after TUI exits (useful for debugging)
+			if stat, _ := logFile.Stat(); stat != nil && stat.Size() > 0 {
+				fmt.Fprintf(os.Stderr, "TUI logs written to: %s\n", logFile.Name())
+			}
+		}()
 	}
 
 	// Create the model

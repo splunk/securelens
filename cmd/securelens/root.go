@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/splunk/securelens/cli/config"
+	"github.com/splunk/securelens/cli/ingest"
 	"github.com/splunk/securelens/cli/query"
 	"github.com/splunk/securelens/cli/scan"
 	"github.com/splunk/securelens/cli/ui"
@@ -49,4 +50,5 @@ func init() {
 	rootCmd.AddCommand(query.NewQueryCmd())
 	rootCmd.AddCommand(config.NewConfigCmd())
 	rootCmd.AddCommand(ui.NewUICmd())
+	rootCmd.AddCommand(ingest.NewIngestCmd())
 }
