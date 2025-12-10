@@ -123,6 +123,233 @@ func (s *SQLiteDB) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_findings_fingerprint ON findings(fingerprint);
 	CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
 	CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(status);
+
+	-- ============================================================================
+	-- SCA Findings Table (Trivy, future: Syft, Grype)
+	-- Primary Key: provider:repo:branch:commit:package:version
+	-- ============================================================================
+	CREATE TABLE IF NOT EXISTS sca_findings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		primary_unique_key TEXT NOT NULL UNIQUE,
+		provider TEXT NOT NULL,
+		repository TEXT NOT NULL,
+		branch TEXT NOT NULL,
+		commit_hash TEXT NOT NULL,
+		package TEXT NOT NULL,
+		installed_version TEXT,
+		fixed_version TEXT,
+		severity TEXT,
+		vulnerability_id TEXT,
+		title TEXT,
+		description TEXT,
+		cves TEXT,
+		cwes TEXT,
+		pkg_path TEXT,
+		data_source TEXT,
+		status TEXT DEFAULT 'open',
+		jira_ticket TEXT,
+		fixed_in_commit TEXT,
+		fixed_at DATETIME,
+		first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_sca_provider_repo ON sca_findings(provider, repository);
+	CREATE INDEX IF NOT EXISTS idx_sca_branch ON sca_findings(branch);
+	CREATE INDEX IF NOT EXISTS idx_sca_severity ON sca_findings(severity);
+	CREATE INDEX IF NOT EXISTS idx_sca_status ON sca_findings(status);
+	CREATE INDEX IF NOT EXISTS idx_sca_vuln_id ON sca_findings(vulnerability_id);
+	CREATE INDEX IF NOT EXISTS idx_sca_package ON sca_findings(package);
+
+	-- ============================================================================
+	-- SAST Findings Table (Semgrep, OpenGrep)
+	-- Primary Key: provider:repo:branch:commit:check_id:fingerprint
+	-- ============================================================================
+	CREATE TABLE IF NOT EXISTS sast_findings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		primary_unique_key TEXT NOT NULL UNIQUE,
+		provider TEXT NOT NULL,
+		repository TEXT NOT NULL,
+		branch TEXT NOT NULL,
+		commit_hash TEXT NOT NULL,
+		scanner TEXT NOT NULL,
+		check_id TEXT NOT NULL,
+		severity TEXT,
+		message TEXT,
+		file_path TEXT,
+		line_start INTEGER,
+		line_end INTEGER,
+		col_start INTEGER,
+		col_end INTEGER,
+		fingerprint TEXT,
+		category TEXT,
+		subcategory TEXT,
+		cwes TEXT,
+		owasp TEXT,
+		confidence TEXT,
+		metadata TEXT,
+		status TEXT DEFAULT 'open',
+		jira_ticket TEXT,
+		fixed_in_commit TEXT,
+		fixed_at DATETIME,
+		first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_sast_provider_repo ON sast_findings(provider, repository);
+	CREATE INDEX IF NOT EXISTS idx_sast_branch ON sast_findings(branch);
+	CREATE INDEX IF NOT EXISTS idx_sast_scanner ON sast_findings(scanner);
+	CREATE INDEX IF NOT EXISTS idx_sast_check_id ON sast_findings(check_id);
+	CREATE INDEX IF NOT EXISTS idx_sast_severity ON sast_findings(severity);
+	CREATE INDEX IF NOT EXISTS idx_sast_status ON sast_findings(status);
+	CREATE INDEX IF NOT EXISTS idx_sast_category ON sast_findings(category);
+
+	-- ============================================================================
+	-- Secrets Findings Table (TruffleHog)
+	-- Primary Key: provider:repo:branch:commit:credential_hash:location_hash
+	-- ============================================================================
+	CREATE TABLE IF NOT EXISTS secrets_findings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		primary_unique_key TEXT NOT NULL UNIQUE,
+		provider TEXT NOT NULL,
+		repository TEXT NOT NULL,
+		branch TEXT NOT NULL,
+		commit_hash TEXT NOT NULL,
+		detector_name TEXT,
+		detector_type TEXT,
+		verified INTEGER DEFAULT 0,
+		credential_hash TEXT,
+		location_hash TEXT,
+		file_path TEXT,
+		line_number INTEGER,
+		severity TEXT,
+		raw_metadata TEXT,
+		status TEXT DEFAULT 'open',
+		jira_ticket TEXT,
+		fixed_in_commit TEXT,
+		fixed_at DATETIME,
+		first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_secrets_provider_repo ON secrets_findings(provider, repository);
+	CREATE INDEX IF NOT EXISTS idx_secrets_branch ON secrets_findings(branch);
+	CREATE INDEX IF NOT EXISTS idx_secrets_detector ON secrets_findings(detector_name);
+	CREATE INDEX IF NOT EXISTS idx_secrets_verified ON secrets_findings(verified);
+	CREATE INDEX IF NOT EXISTS idx_secrets_severity ON secrets_findings(severity);
+	CREATE INDEX IF NOT EXISTS idx_secrets_status ON secrets_findings(status);
+
+	-- ============================================================================
+	-- License Findings Table (Trivy)
+	-- Primary Key: provider:repo:branch:commit:package:version:license
+	-- ============================================================================
+	CREATE TABLE IF NOT EXISTS license_findings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		primary_unique_key TEXT NOT NULL UNIQUE,
+		provider TEXT NOT NULL,
+		repository TEXT NOT NULL,
+		branch TEXT NOT NULL,
+		commit_hash TEXT NOT NULL,
+		package TEXT NOT NULL,
+		version TEXT,
+		license TEXT NOT NULL,
+		classification TEXT,
+		pkg_path TEXT,
+		pkg_type TEXT,
+		severity TEXT,
+		status TEXT DEFAULT 'open',
+		jira_ticket TEXT,
+		first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_license_provider_repo ON license_findings(provider, repository);
+	CREATE INDEX IF NOT EXISTS idx_license_branch ON license_findings(branch);
+	CREATE INDEX IF NOT EXISTS idx_license_package ON license_findings(package);
+	CREATE INDEX IF NOT EXISTS idx_license_license ON license_findings(license);
+	CREATE INDEX IF NOT EXISTS idx_license_classification ON license_findings(classification);
+	CREATE INDEX IF NOT EXISTS idx_license_severity ON license_findings(severity);
+	CREATE INDEX IF NOT EXISTS idx_license_status ON license_findings(status);
+
+	-- ============================================================================
+	-- Scan Jobs Table - Tracks scan progress for provider:repo:branch:commit
+	-- ============================================================================
+	CREATE TABLE IF NOT EXISTS scan_jobs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		primary_unique_key TEXT NOT NULL UNIQUE,
+		provider TEXT NOT NULL,
+		repository TEXT NOT NULL,
+		branch TEXT NOT NULL,
+		commit_hash TEXT NOT NULL,
+		status TEXT DEFAULT 'pending',
+		scan_mode TEXT,
+		error_message TEXT,
+		report_path TEXT,
+		started_at DATETIME,
+		completed_at DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_scanjobs_provider_repo ON scan_jobs(provider, repository);
+	CREATE INDEX IF NOT EXISTS idx_scanjobs_branch ON scan_jobs(branch);
+	CREATE INDEX IF NOT EXISTS idx_scanjobs_status ON scan_jobs(status);
+	CREATE INDEX IF NOT EXISTS idx_scanjobs_scan_mode ON scan_jobs(scan_mode);
+
+	-- ============================================================================
+	-- Scan Job Scanners Table - Per-scanner status within a scan job
+	-- Allows flexible addition/removal of scanners over time
+	-- ============================================================================
+	CREATE TABLE IF NOT EXISTS scan_job_scanners (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		scan_job_id INTEGER NOT NULL,
+		scanner_name TEXT NOT NULL,
+		scanner_type TEXT,
+		status TEXT DEFAULT 'pending',
+		findings_count INTEGER DEFAULT 0,
+		error_message TEXT,
+		output_path TEXT,
+		duration INTEGER DEFAULT 0,
+		started_at DATETIME,
+		completed_at DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (scan_job_id) REFERENCES scan_jobs(id) ON DELETE CASCADE,
+		UNIQUE(scan_job_id, scanner_name)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_scanjob_scanners_job ON scan_job_scanners(scan_job_id);
+	CREATE INDEX IF NOT EXISTS idx_scanjob_scanners_name ON scan_job_scanners(scanner_name);
+	CREATE INDEX IF NOT EXISTS idx_scanjob_scanners_status ON scan_job_scanners(status);
+
+	-- ============================================================================
+	-- Jira Ticket Attribution Table - For future ownership tracking
+	-- ============================================================================
+	CREATE TABLE IF NOT EXISTS jira_ticket_attributions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		jira_ticket TEXT NOT NULL,
+		ticket_key TEXT NOT NULL UNIQUE,
+		finding_type TEXT NOT NULL,
+		finding_key TEXT NOT NULL,
+		ticket_status TEXT,
+		ticket_resolution TEXT,
+		assignee TEXT,
+		due_date DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_jira_ticket_key ON jira_ticket_attributions(ticket_key);
+	CREATE INDEX IF NOT EXISTS idx_jira_finding ON jira_ticket_attributions(finding_type, finding_key);
+	CREATE INDEX IF NOT EXISTS idx_jira_status ON jira_ticket_attributions(ticket_status);
 	`
 
 	_, err := s.db.Exec(schema)

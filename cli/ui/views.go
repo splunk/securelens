@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -34,6 +35,8 @@ func (m Model) viewHome() string {
 	}{
 		{"2", "Browse & scan repositories"},
 		{"3", "View scan results"},
+		{"4", "Vulnerability database"},
+		{"5", "License findings"},
 		{"p", "Add provider (GitHub/GitLab/Bitbucket)"},
 		{"?", "Show help"},
 	}
@@ -525,7 +528,8 @@ func (m Model) updateRepos(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.repoLoadCount = 0 // Reset pagination on refresh
 		m.hasMoreRepos = true
 		m.loading = true
-		return m, m.loadRepos()
+		m.statusMsg = "Refreshing from API..."
+		return m, m.refreshReposFromAPI()
 	case key.Matches(msg, m.keys.LoadMore):
 		if m.hasMoreRepos && !m.loading {
 			m.loading = true
@@ -592,6 +596,23 @@ func (m Model) viewBranchSelect() string {
 		return b.String()
 	}
 
+	// Show search bar
+	if m.branchSearching {
+		searchStyle := lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(ColorPrimary).
+			Padding(0, 1)
+		b.WriteString(searchStyle.Render("Search: " + m.branchSearch + "█"))
+		b.WriteString("\n")
+		b.WriteString(HelpStyle.Render("Enter to confirm • Esc to cancel"))
+		b.WriteString("\n\n")
+	} else if m.branchSearch != "" {
+		b.WriteString(SubtleStyle.Render("Filter: \"" + m.branchSearch + "\""))
+		b.WriteString(" ")
+		b.WriteString(HelpStyle.Render("(press / to edit, esc to clear)"))
+		b.WriteString("\n\n")
+	}
+
 	// Show selected count
 	selectedCount := 0
 	for _, selected := range m.branchSelected {
@@ -601,6 +622,9 @@ func (m Model) viewBranchSelect() string {
 	}
 	b.WriteString(fmt.Sprintf("Select branches to scan (%d selected):\n\n", selectedCount))
 
+	// Filter branches by search term
+	filteredBranches := m.filterBranchesBySearch()
+
 	// Calculate visible window (show 15 branches at a time)
 	pageSize := 15
 	startIdx := 0
@@ -608,8 +632,8 @@ func (m Model) viewBranchSelect() string {
 		startIdx = m.branchSelectIndex - pageSize + 1
 	}
 	endIdx := startIdx + pageSize
-	if endIdx > len(m.branchSelectBranches) {
-		endIdx = len(m.branchSelectBranches)
+	if endIdx > len(filteredBranches) {
+		endIdx = len(filteredBranches)
 	}
 
 	// Show scroll indicator if there are items above
@@ -619,7 +643,7 @@ func (m Model) viewBranchSelect() string {
 
 	// Show branch list
 	for i := startIdx; i < endIdx; i++ {
-		branch := m.branchSelectBranches[i]
+		branch := filteredBranches[i]
 		prefix := "  "
 		if i == m.branchSelectIndex {
 			prefix = "> "
@@ -647,24 +671,84 @@ func (m Model) viewBranchSelect() string {
 	}
 
 	// Show scroll indicator if there are items below
-	if endIdx < len(m.branchSelectBranches) {
-		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↓ %d more below\n", len(m.branchSelectBranches)-endIdx)))
+	if endIdx < len(filteredBranches) {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↓ %d more below\n", len(filteredBranches)-endIdx)))
 	}
 
 	// Footer hints
 	b.WriteString("\n")
 	if len(m.repoQueue) > 0 {
-		b.WriteString(HelpStyle.Render("space: toggle • a: all • n: none • enter: next repo • esc: cancel all"))
+		b.WriteString(HelpStyle.Render("/: search • space: toggle • a: all • n: none • enter: next repo • esc: cancel all"))
 	} else {
-		b.WriteString(HelpStyle.Render("space: toggle • a: all • n: none • enter: start scanning • esc: back"))
+		b.WriteString(HelpStyle.Render("/: search • space: toggle • a: all • n: none • enter: start scanning • esc: back"))
+	}
+
+	// Show branch count
+	if m.branchSearch != "" {
+		b.WriteString("\n")
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("Showing %d of %d branches (filtered)", len(filteredBranches), len(m.branchSelectBranches))))
 	}
 
 	return b.String()
 }
 
+// filterBranchesBySearch returns branches filtered by the search term
+func (m Model) filterBranchesBySearch() []string {
+	if m.branchSearch == "" {
+		return m.branchSelectBranches
+	}
+
+	searchLower := strings.ToLower(m.branchSearch)
+	var filtered []string
+	for _, branch := range m.branchSelectBranches {
+		if strings.Contains(strings.ToLower(branch), searchLower) {
+			filtered = append(filtered, branch)
+		}
+	}
+	return filtered
+}
+
 func (m Model) updateBranchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle search mode input first
+	if m.branchSearching {
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.branchSearching = false
+			return m, nil
+		case tea.KeyEnter:
+			m.branchSearching = false
+			m.branchSelectIndex = 0
+			return m, nil
+		case tea.KeyBackspace:
+			if len(m.branchSearch) > 0 {
+				m.branchSearch = m.branchSearch[:len(m.branchSearch)-1]
+				m.branchSelectIndex = 0
+			}
+			return m, nil
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.branchSearch += string(msg.Runes)
+				m.branchSelectIndex = 0
+			}
+			return m, nil
+		}
+	}
+
+	// Get filtered branches for navigation bounds
+	filteredBranches := m.filterBranchesBySearch()
+
 	switch {
+	case key.Matches(msg, m.keys.Search):
+		m.branchSearching = true
+		return m, nil
+
 	case key.Matches(msg, m.keys.Escape):
+		// Clear search filter if set, otherwise go back
+		if m.branchSearch != "" {
+			m.branchSearch = ""
+			m.branchSelectIndex = 0
+			return m, nil
+		}
 		// Clear all queues and go back
 		m.repoQueue = nil
 		m.scanItems = nil
@@ -677,16 +761,32 @@ func (m Model) updateBranchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, m.keys.Down):
-		if m.branchSelectIndex < len(m.branchSelectBranches)-1 {
+		if m.branchSelectIndex < len(filteredBranches)-1 {
 			m.branchSelectIndex++
 		}
 
 	case key.Matches(msg, m.keys.Space):
-		m.branchSelected[m.branchSelectIndex] = !m.branchSelected[m.branchSelectIndex]
+		// Toggle selection using filtered branch index
+		if m.branchSelectIndex < len(filteredBranches) {
+			// Find the original index for this branch
+			branch := filteredBranches[m.branchSelectIndex]
+			for origIdx, origBranch := range m.branchSelectBranches {
+				if origBranch == branch {
+					m.branchSelected[origIdx] = !m.branchSelected[origIdx]
+					break
+				}
+			}
+		}
 
 	case key.Matches(msg, m.keys.SelectAll):
-		for i := range m.branchSelectBranches {
-			m.branchSelected[i] = true
+		// Select all filtered branches
+		for _, branch := range filteredBranches {
+			for origIdx, origBranch := range m.branchSelectBranches {
+				if origBranch == branch {
+					m.branchSelected[origIdx] = true
+					break
+				}
+			}
 		}
 
 	case key.Matches(msg, m.keys.SelectNone):
@@ -700,10 +800,12 @@ func (m Model) updateBranchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				selectedBranches = append(selectedBranches, m.branchSelectBranches[i])
 			}
 		}
-		// If nothing selected, use the highlighted branch
+		// If nothing selected, use the highlighted branch from filtered list
 		if len(selectedBranches) == 0 {
-			if m.branchSelectIndex < len(m.branchSelectBranches) {
-				selectedBranches = append(selectedBranches, m.branchSelectBranches[m.branchSelectIndex])
+			if m.branchSelectIndex < len(filteredBranches) {
+				selectedBranches = append(selectedBranches, filteredBranches[m.branchSelectIndex])
+			} else if len(filteredBranches) > 0 {
+				selectedBranches = append(selectedBranches, filteredBranches[0])
 			} else {
 				selectedBranches = append(selectedBranches, "main")
 			}
@@ -776,8 +878,14 @@ func (m Model) viewScan() string {
 	summaryStyle := lipgloss.NewStyle().Bold(true)
 	b.WriteString(summaryStyle.Render(fmt.Sprintf("Scanning %d repo/branch combinations", total)))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Completed: %s  Pending: %s  Failed: %s\n\n",
+	// Show running count between completed and pending for clarity
+	runningStr := ""
+	if running > 0 {
+		runningStr = fmt.Sprintf("  Running: %s", lipgloss.NewStyle().Foreground(ColorPrimary).Render(fmt.Sprintf("%d", running)))
+	}
+	b.WriteString(fmt.Sprintf("  Completed: %s%s  Pending: %s  Failed: %s\n\n",
 		SuccessStyle.Render(fmt.Sprintf("%d", completed)),
+		runningStr,
 		SubtleStyle.Render(fmt.Sprintf("%d", pending)),
 		ErrorStyle.Render(fmt.Sprintf("%d", failed))))
 
@@ -836,12 +944,24 @@ func (m Model) viewScan() string {
 		b.WriteString(SubtleStyle.Render(fmt.Sprintf("  ↓ %d more below\n", len(m.scanItems)-endIdx)))
 	}
 
+	// Show scanner logs if any
+	if len(m.scanLogs) > 0 {
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render("─── Scanner Output ───"))
+		b.WriteString("\n")
+		logStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+		for _, log := range m.scanLogs {
+			b.WriteString(logStyle.Render("  " + log))
+			b.WriteString("\n")
+		}
+	}
+
 	// Footer
 	b.WriteString("\n")
 	if running > 0 {
 		b.WriteString(HelpStyle.Render("Scans in progress... esc: cancel all"))
 	} else {
-		b.WriteString(HelpStyle.Render("enter: view results • r: retry failed • esc: back to repos"))
+		b.WriteString(HelpStyle.Render("enter: view vulns • r: retry failed • esc: back to repos"))
 	}
 
 	return b.String()
@@ -877,14 +997,11 @@ func (m Model) updateScan(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, m.keys.Enter):
-		// View results if all scans complete
+		// View vulnerabilities if all scans complete
 		if !running && len(m.scanItems) > 0 {
-			m.view = ViewResults
-			// Reset browser state and load root level
-			m.reportBrowserPath = nil
-			m.currentReport = nil
+			m.view = ViewVulnsDb
 			m.loading = true
-			return m, m.loadReportBrowserItems()
+			return m, m.loadVulns()
 		}
 
 	case key.Matches(msg, m.keys.Refresh):
@@ -1207,4 +1324,934 @@ func (m Model) updateWizard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = ViewHome
 	}
 	return m, nil
+}
+
+// ============================================================================
+// VulnsDb View - Vulnerability Database Browser
+// ============================================================================
+
+func (m Model) viewVulnsDb() string {
+	var b strings.Builder
+
+	// Title
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Vulnerability Database"))
+	b.WriteString("\n\n")
+
+	// Sub-tabs for vulnerability types
+	vulnTabs := []struct {
+		typ   VulnType
+		label string
+	}{
+		{VulnTypeSCA, "SCA (Trivy)"},
+		{VulnTypeSAST, "SAST (OpenGrep)"},
+		{VulnTypeSecrets, "Secrets (TruffleHog)"},
+	}
+
+	var tabsRendered []string
+	for i, vt := range vulnTabs {
+		style := InactiveTabStyle
+		if m.vulnType == vt.typ {
+			style = ActiveTabStyle
+		}
+		if i > 0 {
+			tabsRendered = append(tabsRendered, "  ") // Add spacing between tabs
+		}
+		tabsRendered = append(tabsRendered, style.Render(vt.label))
+	}
+	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, tabsRendered...))
+	b.WriteString("\n\n")
+
+	// Search/filter bar
+	if m.vulnSearching {
+		b.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Render("Search: "))
+		b.WriteString(m.vulnSearch)
+		b.WriteString("█")
+		b.WriteString("\n\n")
+	} else if m.vulnSearch != "" {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("Filter: \"%s\" ", m.vulnSearch)))
+		b.WriteString(HelpStyle.Render("(press / to search, esc to clear)"))
+		b.WriteString("\n\n")
+	}
+
+	// Status filter indicator
+	if m.vulnStatusFilter != "" {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("Status: %s ", m.vulnStatusFilter)))
+		b.WriteString(HelpStyle.Render("(press f to cycle filter)"))
+		b.WriteString("\n\n")
+	}
+
+	// Loading indicator
+	if m.loading {
+		b.WriteString(m.spinner.View())
+		b.WriteString(" Loading vulnerabilities...")
+		return b.String()
+	}
+
+	// Render appropriate list based on current tab
+	switch m.vulnType {
+	case VulnTypeSCA:
+		b.WriteString(m.renderSCAList())
+	case VulnTypeSAST:
+		b.WriteString(m.renderSASTList())
+	case VulnTypeSecrets:
+		b.WriteString(m.renderSecretsList())
+	}
+
+	// Bulk action menu
+	if m.vulnShowActions {
+		b.WriteString("\n")
+		b.WriteString(m.renderBulkActionMenu())
+	}
+
+	// Help
+	b.WriteString("\n")
+	selectedCount := len(m.vulnSelected)
+	if selectedCount > 0 {
+		b.WriteString(SuccessStyle.Render(fmt.Sprintf("%d selected", selectedCount)))
+		b.WriteString(" | ")
+	}
+	b.WriteString(HelpStyle.Render("tab: switch type | /: search | f: filter status | s: sort | space: select | a: select all | enter: bulk actions"))
+
+	return b.String()
+}
+
+func (m Model) renderSCAList() string {
+	var b strings.Builder
+
+	items := m.getFilteredSCAItems()
+	if len(items) == 0 {
+		b.WriteString(SubtleStyle.Render("No SCA vulnerabilities found"))
+		return b.String()
+	}
+
+	// Header
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorMuted)
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-8s %-20s %-10s %-8s %-10s %-25s %-15s %-8s\n",
+		"Provider", "Repo", "Branch", "Commit", "Severity", "Package", "CVE", "Status")))
+	b.WriteString(strings.Repeat("─", 120) + "\n")
+
+	// Calculate visible range
+	visibleStart, visibleEnd := m.calculateVisibleRange(len(items), 15)
+
+	for i := visibleStart; i < visibleEnd; i++ {
+		item := items[i]
+		isSelected := m.vulnSelected[i]
+		isCurrent := i == m.vulnListIndex
+
+		// Selection indicator
+		selectIndicator := "  "
+		if isSelected {
+			selectIndicator = lipgloss.NewStyle().Foreground(ColorSuccess).Render("✓ ")
+		}
+
+		// Cursor indicator
+		cursor := " "
+		if isCurrent {
+			cursor = lipgloss.NewStyle().Foreground(ColorPrimary).Render("▸")
+		}
+
+		// Severity color
+		sevStyle := getSeverityStyle(item.Severity)
+
+		// Truncate fields
+		provider := truncateString(item.Provider, 6)
+		repo := truncateString(item.Repository, 18)
+		branch := truncateString(item.Branch, 8)
+		commit := truncateString(item.Commit, 6)
+		pkg := truncateString(item.Package, 23)
+		cve := truncateString(item.VulnerabilityID, 13)
+
+		line := fmt.Sprintf("%s%s%-8s %-20s %-10s %-8s %-10s %-25s %-15s %-8s\n",
+			cursor, selectIndicator,
+			provider, repo, branch, commit,
+			sevStyle.Render(item.Severity),
+			pkg, cve, item.Status)
+
+		b.WriteString(line)
+	}
+
+	b.WriteString(fmt.Sprintf("\n%d/%d vulnerabilities", len(items), len(m.scaVulns)))
+
+	return b.String()
+}
+
+func (m Model) renderSASTList() string {
+	var b strings.Builder
+
+	items := m.getFilteredSASTItems()
+	if len(items) == 0 {
+		b.WriteString(SubtleStyle.Render("No SAST findings found"))
+		return b.String()
+	}
+
+	// Header
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorMuted)
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-8s %-18s %-10s %-8s %-10s %-25s %-20s %-6s %-8s\n",
+		"Provider", "Repo", "Branch", "Commit", "Severity", "Rule", "File", "Line", "Status")))
+	b.WriteString(strings.Repeat("─", 130) + "\n")
+
+	// Calculate visible range
+	visibleStart, visibleEnd := m.calculateVisibleRange(len(items), 15)
+
+	for i := visibleStart; i < visibleEnd; i++ {
+		item := items[i]
+		isSelected := m.vulnSelected[i]
+		isCurrent := i == m.vulnListIndex
+
+		selectIndicator := "  "
+		if isSelected {
+			selectIndicator = lipgloss.NewStyle().Foreground(ColorSuccess).Render("✓ ")
+		}
+
+		cursor := " "
+		if isCurrent {
+			cursor = lipgloss.NewStyle().Foreground(ColorPrimary).Render("▸")
+		}
+
+		sevStyle := getSeverityStyle(item.Severity)
+
+		provider := truncateString(item.Provider, 6)
+		repo := truncateString(item.Repository, 16)
+		branch := truncateString(item.Branch, 8)
+		commit := truncateString(item.Commit, 6)
+		rule := truncateString(item.CheckID, 23)
+		file := truncateString(item.FilePath, 18)
+
+		line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-25s %-20s %-6d %-8s\n",
+			cursor, selectIndicator,
+			provider, repo, branch, commit,
+			sevStyle.Render(item.Severity),
+			rule, file, item.Line, item.Status)
+
+		b.WriteString(line)
+	}
+
+	b.WriteString(fmt.Sprintf("\n%d/%d findings", len(items), len(m.sastVulns)))
+
+	return b.String()
+}
+
+func (m Model) renderSecretsList() string {
+	var b strings.Builder
+
+	items := m.getFilteredSecretsItems()
+	if len(items) == 0 {
+		b.WriteString(SubtleStyle.Render("No secrets findings found"))
+		return b.String()
+	}
+
+	// Header
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorMuted)
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-8s %-18s %-10s %-8s %-10s %-18s %-25s %-6s %-8s\n",
+		"Provider", "Repo", "Branch", "Commit", "Verified", "Detector", "File", "Line", "Status")))
+	b.WriteString(strings.Repeat("─", 130) + "\n")
+
+	// Calculate visible range
+	visibleStart, visibleEnd := m.calculateVisibleRange(len(items), 15)
+
+	for i := visibleStart; i < visibleEnd; i++ {
+		item := items[i]
+		isSelected := m.vulnSelected[i]
+		isCurrent := i == m.vulnListIndex
+
+		selectIndicator := "  "
+		if isSelected {
+			selectIndicator = lipgloss.NewStyle().Foreground(ColorSuccess).Render("✓ ")
+		}
+
+		cursor := " "
+		if isCurrent {
+			cursor = lipgloss.NewStyle().Foreground(ColorPrimary).Render("▸")
+		}
+
+		verified := SubtleStyle.Render("No")
+		if item.Verified {
+			verified = ErrorStyle.Render("YES")
+		}
+
+		provider := truncateString(item.Provider, 6)
+		repo := truncateString(item.Repository, 16)
+		branch := truncateString(item.Branch, 8)
+		commit := truncateString(item.Commit, 6)
+		detector := truncateString(item.DetectorName, 16)
+		file := truncateString(item.FilePath, 23)
+
+		line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-18s %-25s %-6d %-8s\n",
+			cursor, selectIndicator,
+			provider, repo, branch, commit,
+			verified, detector, file, item.Line, item.Status)
+
+		b.WriteString(line)
+	}
+
+	b.WriteString(fmt.Sprintf("\n%d/%d secrets", len(items), len(m.secretsVulns)))
+
+	return b.String()
+}
+
+func (m Model) renderBulkActionMenu() string {
+	var b strings.Builder
+
+	menuStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorBorder).
+		Padding(0, 1)
+
+	actions := []struct {
+		key  string
+		name string
+	}{
+		{"i", "Mark as Ignored"},
+		{"o", "Mark as Open"},
+		{"t", "Create JIRA Ticket (coming soon)"},
+		{"esc", "Cancel"},
+	}
+
+	b.WriteString("Bulk Actions:\n")
+	for _, a := range actions {
+		keyStyle := lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+		b.WriteString(fmt.Sprintf("  %s %s\n", keyStyle.Render("["+a.key+"]"), a.name))
+	}
+
+	return menuStyle.Render(b.String())
+}
+
+func (m Model) calculateVisibleRange(total, pageSize int) (int, int) {
+	if total == 0 {
+		return 0, 0
+	}
+
+	// Center the current selection
+	start := m.vulnListIndex - pageSize/2
+	if start < 0 {
+		start = 0
+	}
+
+	end := start + pageSize
+	if end > total {
+		end = total
+		start = end - pageSize
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	return start, end
+}
+
+func (m Model) getFilteredSCAItems() []SCAVulnItem {
+	var filtered []SCAVulnItem
+	for _, item := range m.scaVulns {
+		if m.vulnStatusFilter != "" && item.Status != m.vulnStatusFilter {
+			continue
+		}
+		if m.vulnSearch != "" {
+			search := strings.ToLower(m.vulnSearch)
+			if !strings.Contains(strings.ToLower(item.Package), search) &&
+				!strings.Contains(strings.ToLower(item.VulnerabilityID), search) &&
+				!strings.Contains(strings.ToLower(item.Repository), search) {
+				continue
+			}
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func (m Model) getFilteredSASTItems() []SASTVulnItem {
+	var filtered []SASTVulnItem
+	for _, item := range m.sastVulns {
+		if m.vulnStatusFilter != "" && item.Status != m.vulnStatusFilter {
+			continue
+		}
+		if m.vulnSearch != "" {
+			search := strings.ToLower(m.vulnSearch)
+			if !strings.Contains(strings.ToLower(item.CheckID), search) &&
+				!strings.Contains(strings.ToLower(item.FilePath), search) &&
+				!strings.Contains(strings.ToLower(item.Repository), search) {
+				continue
+			}
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func (m Model) getFilteredSecretsItems() []SecretsVulnItem {
+	var filtered []SecretsVulnItem
+	for _, item := range m.secretsVulns {
+		if m.vulnStatusFilter != "" && item.Status != m.vulnStatusFilter {
+			continue
+		}
+		if m.vulnSearch != "" {
+			search := strings.ToLower(m.vulnSearch)
+			if !strings.Contains(strings.ToLower(item.DetectorName), search) &&
+				!strings.Contains(strings.ToLower(item.FilePath), search) &&
+				!strings.Contains(strings.ToLower(item.Repository), search) {
+				continue
+			}
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func getSeverityStyle(severity string) lipgloss.Style {
+	switch strings.ToUpper(severity) {
+	case "CRITICAL":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true) // Bright red
+	case "HIGH", "ERROR":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("202")) // Orange-red
+	case "MEDIUM", "WARNING":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // Orange
+	case "LOW", "INFO":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("226")) // Yellow
+	default:
+		return SubtleStyle
+	}
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+func (m Model) updateVulnsDb(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle search input mode
+	if m.vulnSearching {
+		switch msg.Type {
+		case tea.KeyEnter, tea.KeyEsc:
+			m.vulnSearching = false
+			m.vulnListIndex = 0
+			m.vulnSelected = make(map[int]bool)
+		case tea.KeyBackspace:
+			if len(m.vulnSearch) > 0 {
+				m.vulnSearch = m.vulnSearch[:len(m.vulnSearch)-1]
+			}
+		case tea.KeyRunes:
+			m.vulnSearch += string(msg.Runes)
+		}
+		return m, nil
+	}
+
+	// Handle bulk action menu
+	if m.vulnShowActions {
+		switch msg.String() {
+		case "esc":
+			m.vulnShowActions = false
+		case "i":
+			m.markSelectedVulns("ignored")
+			m.vulnShowActions = false
+		case "o":
+			m.markSelectedVulns("open")
+			m.vulnShowActions = false
+		case "t":
+			m.statusMsg = "JIRA ticket creation coming soon!"
+			m.vulnShowActions = false
+		}
+		return m, nil
+	}
+
+	// Get current list length
+	listLen := m.getCurrentVulnListLen()
+
+	switch {
+	// Navigation
+	case key.Matches(msg, m.keys.Up):
+		if m.vulnListIndex > 0 {
+			m.vulnListIndex--
+		}
+	case key.Matches(msg, m.keys.Down):
+		if m.vulnListIndex < listLen-1 {
+			m.vulnListIndex++
+		}
+	case key.Matches(msg, m.keys.PageUp):
+		m.vulnListIndex -= 10
+		if m.vulnListIndex < 0 {
+			m.vulnListIndex = 0
+		}
+	case key.Matches(msg, m.keys.PageDown):
+		m.vulnListIndex += 10
+		if m.vulnListIndex >= listLen {
+			m.vulnListIndex = listLen - 1
+		}
+		if m.vulnListIndex < 0 {
+			m.vulnListIndex = 0
+		}
+
+	// Row expansion (Right to expand, Left to collapse)
+	case key.Matches(msg, m.keys.Right):
+		m.vulnRowExpanded = true
+	case key.Matches(msg, m.keys.Left):
+		m.vulnRowExpanded = false
+
+	// Tab switching
+	case key.Matches(msg, m.keys.Tab):
+		m.vulnType = (m.vulnType + 1) % 3
+		m.vulnListIndex = 0
+		m.vulnSelected = make(map[int]bool)
+		m.loading = true
+		return m, m.loadVulns()
+	case key.Matches(msg, m.keys.ShiftTab):
+		m.vulnType = (m.vulnType + 2) % 3 // Go backwards
+		m.vulnListIndex = 0
+		m.vulnSelected = make(map[int]bool)
+		m.loading = true
+		return m, m.loadVulns()
+
+	// Search
+	case key.Matches(msg, m.keys.Search):
+		m.vulnSearching = true
+		m.vulnSearch = ""
+
+	// Status filter
+	case msg.String() == "f":
+		// Cycle through status filters: "" -> "open" -> "fixed" -> "ignored" -> ""
+		switch m.vulnStatusFilter {
+		case "":
+			m.vulnStatusFilter = "open"
+		case "open":
+			m.vulnStatusFilter = "fixed"
+		case "fixed":
+			m.vulnStatusFilter = "ignored"
+		default:
+			m.vulnStatusFilter = ""
+		}
+		m.vulnListIndex = 0
+
+	// Sort
+	case msg.String() == "s":
+		m.vulnSortField = (m.vulnSortField + 1) % 4
+		m.statusMsg = fmt.Sprintf("Sorting by: %s", m.vulnSortField.String())
+
+	// Selection
+	case key.Matches(msg, m.keys.Space):
+		if listLen > 0 {
+			m.vulnSelected[m.vulnListIndex] = !m.vulnSelected[m.vulnListIndex]
+			if !m.vulnSelected[m.vulnListIndex] {
+				delete(m.vulnSelected, m.vulnListIndex)
+			}
+		}
+
+	case key.Matches(msg, m.keys.SelectAll):
+		for i := 0; i < listLen; i++ {
+			m.vulnSelected[i] = true
+		}
+
+	case key.Matches(msg, m.keys.SelectNone):
+		m.vulnSelected = make(map[int]bool)
+
+	// Bulk actions
+	case key.Matches(msg, m.keys.Enter):
+		if len(m.vulnSelected) > 0 {
+			m.vulnShowActions = true
+		}
+
+	// Refresh
+	case key.Matches(msg, m.keys.Refresh):
+		m.loading = true
+		return m, m.loadVulns()
+
+	// Clear search on escape
+	case key.Matches(msg, m.keys.Escape):
+		if m.vulnSearch != "" {
+			m.vulnSearch = ""
+			m.vulnListIndex = 0
+		}
+	}
+
+	return m, nil
+}
+
+func (m Model) getCurrentVulnListLen() int {
+	switch m.vulnType {
+	case VulnTypeSCA:
+		return len(m.getFilteredSCAItems())
+	case VulnTypeSAST:
+		return len(m.getFilteredSASTItems())
+	case VulnTypeSecrets:
+		return len(m.getFilteredSecretsItems())
+	}
+	return 0
+}
+
+func (m *Model) markSelectedVulns(status string) {
+	if m.db == nil {
+		return
+	}
+	ctx := context.Background()
+
+	switch m.vulnType {
+	case VulnTypeSCA:
+		items := m.getFilteredSCAItems()
+		for idx := range m.vulnSelected {
+			if idx < len(items) {
+				_ = m.db.UpdateSCAFindingStatus(ctx, items[idx].PrimaryKey, status, "")
+			}
+		}
+	case VulnTypeSAST:
+		items := m.getFilteredSASTItems()
+		for idx := range m.vulnSelected {
+			if idx < len(items) {
+				_ = m.db.UpdateSASTFindingStatus(ctx, items[idx].PrimaryKey, status, "")
+			}
+		}
+	case VulnTypeSecrets:
+		items := m.getFilteredSecretsItems()
+		for idx := range m.vulnSelected {
+			if idx < len(items) {
+				_ = m.db.UpdateSecretsFindingStatus(ctx, items[idx].PrimaryKey, status, "")
+			}
+		}
+	}
+
+	m.vulnSelected = make(map[int]bool)
+	m.statusMsg = fmt.Sprintf("Marked %d items as %s", len(m.vulnSelected), status)
+}
+
+// ============================================================================
+// Licenses View - License Findings Browser
+// ============================================================================
+
+func (m Model) viewLicenses() string {
+	var b strings.Builder
+
+	// Title
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render("License Findings"))
+	b.WriteString("\n\n")
+
+	// Search/filter bar
+	if m.licenseSearching {
+		b.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Render("Search: "))
+		b.WriteString(m.licenseSearch)
+		b.WriteString("█")
+		b.WriteString("\n\n")
+	} else if m.licenseSearch != "" {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("Filter: \"%s\" ", m.licenseSearch)))
+		b.WriteString(HelpStyle.Render("(press / to search, esc to clear)"))
+		b.WriteString("\n\n")
+	}
+
+	// Status filter indicator
+	if m.licenseStatusFilter != "" {
+		b.WriteString(SubtleStyle.Render(fmt.Sprintf("Status: %s ", m.licenseStatusFilter)))
+		b.WriteString(HelpStyle.Render("(press f to cycle filter)"))
+		b.WriteString("\n\n")
+	}
+
+	// Loading indicator
+	if m.loading {
+		b.WriteString(m.spinner.View())
+		b.WriteString(" Loading license findings...")
+		return b.String()
+	}
+
+	// Render license list
+	b.WriteString(m.renderLicenseList())
+
+	// Bulk action menu
+	if m.licenseShowActions {
+		b.WriteString("\n")
+		b.WriteString(m.renderLicenseBulkActionMenu())
+	}
+
+	// Help
+	b.WriteString("\n")
+	selectedCount := len(m.licenseSelected)
+	if selectedCount > 0 {
+		b.WriteString(SuccessStyle.Render(fmt.Sprintf("%d selected", selectedCount)))
+		b.WriteString(" | ")
+	}
+	b.WriteString(HelpStyle.Render("/: search | f: filter status | space: select | a: select all | n: none | enter: bulk actions | r: refresh"))
+
+	return b.String()
+}
+
+func (m Model) renderLicenseList() string {
+	var b strings.Builder
+
+	items := m.getFilteredLicenseItems()
+	if len(items) == 0 {
+		b.WriteString(SubtleStyle.Render("No license findings found"))
+		return b.String()
+	}
+
+	// Header
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorMuted)
+	b.WriteString(headerStyle.Render(fmt.Sprintf("  %-8s %-18s %-10s %-8s %-10s %-12s %-22s %-12s %-8s\n",
+		"Provider", "Repo", "Branch", "Commit", "Severity", "Class", "Package", "License", "Status")))
+	b.WriteString(strings.Repeat("─", 130) + "\n")
+
+	// Calculate visible range
+	visibleStart, visibleEnd := m.calculateLicenseVisibleRange(len(items), 15)
+
+	for i := visibleStart; i < visibleEnd; i++ {
+		item := items[i]
+		isSelected := m.licenseSelected[i]
+		isCurrent := i == m.licenseListIndex
+
+		// Selection indicator
+		selectIndicator := "  "
+		if isSelected {
+			selectIndicator = lipgloss.NewStyle().Foreground(ColorSuccess).Render("✓ ")
+		}
+
+		// Cursor indicator
+		cursor := " "
+		if isCurrent {
+			cursor = lipgloss.NewStyle().Foreground(ColorPrimary).Render("▸")
+		}
+
+		// Severity and classification styling
+		sevStyle := getSeverityStyle(item.Severity)
+		classStyle := getClassificationStyle(item.Classification)
+
+		// Truncate fields
+		provider := truncateString(item.Provider, 6)
+		repo := truncateString(item.Repository, 16)
+		branch := truncateString(item.Branch, 8)
+		commit := truncateString(item.Commit, 6)
+		pkg := truncateString(item.Package+"@"+item.Version, 20)
+		license := truncateString(item.License, 10)
+		class := truncateString(item.Classification, 10)
+
+		line := fmt.Sprintf("%s%s%-8s %-18s %-10s %-8s %-10s %-12s %-22s %-12s %-8s\n",
+			cursor, selectIndicator,
+			provider, repo, branch, commit,
+			sevStyle.Render(item.Severity),
+			classStyle.Render(class),
+			pkg, license, item.Status)
+
+		b.WriteString(line)
+	}
+
+	b.WriteString(fmt.Sprintf("\n%d/%d license findings", len(items), len(m.licenseVulns)))
+
+	return b.String()
+}
+
+func (m Model) renderLicenseBulkActionMenu() string {
+	var b strings.Builder
+
+	menuStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorBorder).
+		Padding(0, 1)
+
+	actions := []struct {
+		key  string
+		name string
+	}{
+		{"i", "Mark as Ignored"},
+		{"o", "Mark as Open"},
+		{"t", "Create JIRA Ticket (coming soon)"},
+		{"esc", "Cancel"},
+	}
+
+	b.WriteString("Bulk Actions:\n")
+	for _, a := range actions {
+		keyStyle := lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+		b.WriteString(fmt.Sprintf("  %s %s\n", keyStyle.Render("["+a.key+"]"), a.name))
+	}
+
+	return menuStyle.Render(b.String())
+}
+
+func (m Model) calculateLicenseVisibleRange(total, pageSize int) (int, int) {
+	if total == 0 {
+		return 0, 0
+	}
+
+	// Center the current selection
+	start := m.licenseListIndex - pageSize/2
+	if start < 0 {
+		start = 0
+	}
+
+	end := start + pageSize
+	if end > total {
+		end = total
+		start = end - pageSize
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	return start, end
+}
+
+func (m Model) getFilteredLicenseItems() []LicenseVulnItem {
+	var filtered []LicenseVulnItem
+	for _, item := range m.licenseVulns {
+		if m.licenseStatusFilter != "" && item.Status != m.licenseStatusFilter {
+			continue
+		}
+		if m.licenseSearch != "" {
+			search := strings.ToLower(m.licenseSearch)
+			if !strings.Contains(strings.ToLower(item.Package), search) &&
+				!strings.Contains(strings.ToLower(item.License), search) &&
+				!strings.Contains(strings.ToLower(item.Repository), search) &&
+				!strings.Contains(strings.ToLower(item.Classification), search) {
+				continue
+			}
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func getClassificationStyle(classification string) lipgloss.Style {
+	switch strings.ToLower(classification) {
+	case "restricted":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true) // Red
+	case "reciprocal":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // Orange
+	case "permissive":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("40")) // Green
+	default:
+		return SubtleStyle
+	}
+}
+
+func (m Model) updateLicenses(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle search input mode
+	if m.licenseSearching {
+		switch msg.Type {
+		case tea.KeyEnter, tea.KeyEsc:
+			m.licenseSearching = false
+			m.licenseListIndex = 0
+			m.licenseSelected = make(map[int]bool)
+		case tea.KeyBackspace:
+			if len(m.licenseSearch) > 0 {
+				m.licenseSearch = m.licenseSearch[:len(m.licenseSearch)-1]
+			}
+		case tea.KeyRunes:
+			m.licenseSearch += string(msg.Runes)
+		}
+		return m, nil
+	}
+
+	// Handle bulk action menu
+	if m.licenseShowActions {
+		switch msg.String() {
+		case "esc":
+			m.licenseShowActions = false
+		case "i":
+			m.markSelectedLicenses("ignored")
+			m.licenseShowActions = false
+		case "o":
+			m.markSelectedLicenses("open")
+			m.licenseShowActions = false
+		case "t":
+			m.statusMsg = "JIRA ticket creation coming soon!"
+			m.licenseShowActions = false
+		}
+		return m, nil
+	}
+
+	// Get current list length
+	listLen := len(m.getFilteredLicenseItems())
+
+	switch {
+	// Navigation
+	case key.Matches(msg, m.keys.Up):
+		if m.licenseListIndex > 0 {
+			m.licenseListIndex--
+		}
+	case key.Matches(msg, m.keys.Down):
+		if m.licenseListIndex < listLen-1 {
+			m.licenseListIndex++
+		}
+	case key.Matches(msg, m.keys.PageUp):
+		m.licenseListIndex -= 10
+		if m.licenseListIndex < 0 {
+			m.licenseListIndex = 0
+		}
+	case key.Matches(msg, m.keys.PageDown):
+		m.licenseListIndex += 10
+		if m.licenseListIndex >= listLen {
+			m.licenseListIndex = listLen - 1
+		}
+		if m.licenseListIndex < 0 {
+			m.licenseListIndex = 0
+		}
+
+	// Search
+	case key.Matches(msg, m.keys.Search):
+		m.licenseSearching = true
+		m.licenseSearch = ""
+
+	// Status filter
+	case msg.String() == "f":
+		// Cycle through status filters: "" -> "open" -> "ignored" -> ""
+		switch m.licenseStatusFilter {
+		case "":
+			m.licenseStatusFilter = "open"
+		case "open":
+			m.licenseStatusFilter = "ignored"
+		default:
+			m.licenseStatusFilter = ""
+		}
+		m.licenseListIndex = 0
+
+	// Selection
+	case key.Matches(msg, m.keys.Space):
+		if listLen > 0 {
+			m.licenseSelected[m.licenseListIndex] = !m.licenseSelected[m.licenseListIndex]
+			if !m.licenseSelected[m.licenseListIndex] {
+				delete(m.licenseSelected, m.licenseListIndex)
+			}
+		}
+
+	case key.Matches(msg, m.keys.SelectAll):
+		for i := 0; i < listLen; i++ {
+			m.licenseSelected[i] = true
+		}
+
+	case key.Matches(msg, m.keys.SelectNone):
+		m.licenseSelected = make(map[int]bool)
+
+	// Bulk actions
+	case key.Matches(msg, m.keys.Enter):
+		if len(m.licenseSelected) > 0 {
+			m.licenseShowActions = true
+		}
+
+	// Refresh
+	case key.Matches(msg, m.keys.Refresh):
+		m.loading = true
+		return m, m.loadLicenses()
+
+	// Clear search on escape
+	case key.Matches(msg, m.keys.Escape):
+		if m.licenseSearch != "" {
+			m.licenseSearch = ""
+			m.licenseListIndex = 0
+		}
+	}
+
+	return m, nil
+}
+
+func (m *Model) markSelectedLicenses(status string) {
+	if m.db == nil {
+		return
+	}
+	ctx := context.Background()
+
+	items := m.getFilteredLicenseItems()
+	count := 0
+	for idx := range m.licenseSelected {
+		if idx < len(items) {
+			_ = m.db.UpdateLicenseFindingStatus(ctx, items[idx].PrimaryKey, status, "")
+			count++
+		}
+	}
+
+	m.licenseSelected = make(map[int]bool)
+	m.statusMsg = fmt.Sprintf("Marked %d license items as %s", count, status)
 }
