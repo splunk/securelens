@@ -29,9 +29,11 @@ type KeyMap struct {
 	AddRepoURL key.Binding
 
 	// View jumping
-	GoHome    key.Binding
-	GoRepos   key.Binding
-	GoResults key.Binding
+	GoHome     key.Binding
+	GoRepos    key.Binding
+	GoResults  key.Binding
+	GoVulnsDb  key.Binding
+	GoLicenses key.Binding
 
 	// Results actions
 	Export     key.Binding
@@ -140,6 +142,14 @@ func DefaultKeyMap() KeyMap {
 		GoResults: key.NewBinding(
 			key.WithKeys("3"),
 			key.WithHelp("3", "results"),
+		),
+		GoVulnsDb: key.NewBinding(
+			key.WithKeys("4"),
+			key.WithHelp("4", "vulns db"),
+		),
+		GoLicenses: key.NewBinding(
+			key.WithKeys("5"),
+			key.WithHelp("5", "licenses"),
 		),
 
 		// Results actions

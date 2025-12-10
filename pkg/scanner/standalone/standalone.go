@@ -259,6 +259,91 @@ func runScannersSequential(ctx context.Context, repoPath string, scanners []Scan
 	return results, nil
 }
 
+// ProgressCallback is a function that receives scanner progress updates
+type ProgressCallback func(scanner, status string)
+
+// RunStandaloneScansParallelWithProgress runs scanners with optional parallelism and progress callbacks
+func RunStandaloneScansParallelWithProgress(ctx context.Context, repoPath string, scanners []ScannerType, assetsDir string, parallel bool, progress ProgressCallback) (map[string]*StandaloneScanResult, error) {
+	sendProgress := func(scanner, status string) {
+		if progress != nil {
+			progress(scanner, status)
+		}
+	}
+
+	if !parallel {
+		return runScannersSequentialWithProgress(ctx, repoPath, scanners, assetsDir, sendProgress)
+	}
+
+	results := make(map[string]*StandaloneScanResult)
+	resultChan := make(chan ScannerResult, len(scanners))
+
+	// Create a context with timeout for the entire scan operation
+	scanCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+
+	// Launch goroutines for each scanner
+	for _, scanner := range scanners {
+		sendProgress(string(scanner), "Starting...")
+		go func(s ScannerType) {
+			sendProgress(string(s), "Running...")
+			result := runSingleScanner(scanCtx, s, repoPath, assetsDir)
+			if result.Error != "" {
+				sendProgress(string(s), fmt.Sprintf("Failed: %s", result.Error))
+			} else {
+				// Extract findings count for progress message
+				count := extractFindingsCount(result.Results)
+				sendProgress(string(s), fmt.Sprintf("Complete: %d findings (%s)", count, result.Duration))
+			}
+			select {
+			case resultChan <- ScannerResult{Scanner: string(s), Result: result}:
+			case <-scanCtx.Done():
+				slog.Warn("Scanner result dropped due to context cancellation", "scanner", s)
+			}
+		}(scanner)
+	}
+
+	// Collect results with timeout
+	for i := 0; i < len(scanners); i++ {
+		select {
+		case res := <-resultChan:
+			results[res.Scanner] = res.Result
+		case <-scanCtx.Done():
+			slog.Warn("Timeout waiting for scanner results", "collected", len(results), "expected", len(scanners))
+			return results, nil
+		}
+	}
+
+	return results, nil
+}
+
+func runScannersSequentialWithProgress(ctx context.Context, repoPath string, scanners []ScannerType, assetsDir string, progress func(scanner, status string)) (map[string]*StandaloneScanResult, error) {
+	results := make(map[string]*StandaloneScanResult)
+	for _, scanner := range scanners {
+		progress(string(scanner), "Starting...")
+		progress(string(scanner), "Running...")
+		result := runSingleScanner(ctx, scanner, repoPath, assetsDir)
+		if result.Error != "" {
+			progress(string(scanner), fmt.Sprintf("Failed: %s", result.Error))
+		} else {
+			count := extractFindingsCount(result.Results)
+			progress(string(scanner), fmt.Sprintf("Complete: %d findings (%s)", count, result.Duration))
+		}
+		results[string(scanner)] = result
+	}
+	return results, nil
+}
+
+// extractFindingsCount extracts the findings count from scanner results
+func extractFindingsCount(results map[string]interface{}) int {
+	if count, ok := results["findings_count"].(int); ok {
+		return count
+	}
+	if count, ok := results["vulnerabilities_count"].(int); ok {
+		return count
+	}
+	return 0
+}
+
 func runSingleScanner(ctx context.Context, scanner ScannerType, repoPath, assetsDir string) *StandaloneScanResult {
 	slog.Info("Running standalone scanner", "scanner", scanner, "repo_path", repoPath)
 
@@ -458,17 +543,22 @@ func runOpengrep(ctx context.Context, repoPath, assetsDir string) (map[string]in
 		}, fmt.Errorf("failed to parse opengrep output: %w", err)
 	}
 
-	// Count findings by severity
+	// Count findings by severity and convert to []interface{} for database storage
+	// We need to convert structs to map[string]interface{} for the database save code
 	severityCounts := make(map[string]int)
-	for _, finding := range results.Results {
+	findingsIface := make([]interface{}, len(results.Results))
+	for i, finding := range results.Results {
 		severityCounts[finding.Extra.Severity]++
+		// Convert struct to map via JSON for database compatibility
+		findingMap := structToMap(finding)
+		findingsIface[i] = findingMap
 	}
 
 	return map[string]interface{}{
 		"status":         "COMPLETE",
 		"findings_count": len(results.Results),
 		"files_scanned":  len(results.Paths.Scanned),
-		"findings":       results.Results,
+		"findings":       findingsIface,
 		"by_severity":    severityCounts,
 		"errors":         results.Errors,
 		"version":        results.Version,
@@ -481,6 +571,20 @@ func countBySeverity(findings []srs.SemgrepFinding) map[string]int {
 		counts[f.Extra.Severity]++
 	}
 	return counts
+}
+
+// structToMap converts a struct to map[string]interface{} via JSON marshal/unmarshal
+// This is necessary because Go doesn't allow direct type assertion from struct to map
+func structToMap(v interface{}) map[string]interface{} {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil
+	}
+	return result
 }
 
 func runTrivy(ctx context.Context, repoPath string) (map[string]interface{}, error) {
@@ -513,14 +617,18 @@ func runTrivy(ctx context.Context, repoPath string) (map[string]interface{}, err
 		return nil, fmt.Errorf("failed to parse trivy output: %w", err)
 	}
 
-	// Count vulnerabilities by severity
+	// Count vulnerabilities by severity and convert to []interface{} for database storage
+	// We need to convert structs to map[string]interface{} for the database save code
 	severityCounts := make(map[string]int)
 	totalVulns := 0
-	for _, result := range results.Results {
+	resultsIface := make([]interface{}, len(results.Results))
+	for i, result := range results.Results {
 		for _, vuln := range result.Vulnerabilities {
 			severityCounts[vuln.Severity]++
 			totalVulns++
 		}
+		// Convert struct to map via JSON for database compatibility
+		resultsIface[i] = structToMap(result)
 	}
 
 	return map[string]interface{}{
@@ -529,7 +637,7 @@ func runTrivy(ctx context.Context, repoPath string) (map[string]interface{}, err
 		"by_severity":           severityCounts,
 		"artifact_name":         results.ArtifactName,
 		"artifact_type":         results.ArtifactType,
-		"results":               results.Results,
+		"results":               resultsIface,
 	}, nil
 }
 
@@ -600,6 +708,13 @@ func runTrufflehog(ctx context.Context, repoPath string) (map[string]interface{}
 		}
 	}
 
+	// Convert findings to []interface{} for database storage
+	// We need to convert structs to map[string]interface{} for the database save code
+	findingsIface := make([]interface{}, len(findings))
+	for i, f := range findings {
+		findingsIface[i] = structToMap(f)
+	}
+
 	return map[string]interface{}{
 		"status":             "COMPLETE",
 		"findings_count":     len(findings),
@@ -607,7 +722,7 @@ func runTrufflehog(ctx context.Context, repoPath string) (map[string]interface{}
 		"unverified_secrets": unverifiedCount,
 		"scan_duration":      scanDuration,
 		"version":            trufflehogVersion,
-		"findings":           findings,
+		"findings":           findingsIface,
 	}, nil
 }
 

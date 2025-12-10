@@ -63,10 +63,10 @@ type BitbucketConfig struct {
 
 // SRSConfig holds SRS API configuration
 type SRSConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	APIURL  string `yaml:"api_url"`
-	APIKey  string `yaml:"api_key"`
-	Timeout int    `yaml:"timeout"`
+	Enabled bool   `yaml:"enabled" mapstructure:"enabled"`
+	APIURL  string `yaml:"api_url" mapstructure:"api_url"`
+	APIKey  string `yaml:"api_key" mapstructure:"api_key"`
+	Timeout int    `yaml:"timeout" mapstructure:"timeout"`
 }
 
 // ScannersConfig holds scanner-specific configuration

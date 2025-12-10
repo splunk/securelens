@@ -356,8 +356,22 @@ func ScanRepository(ctx context.Context, cfg *config.Config, repo DiscoveredRepo
 	return ScanRepositoryWithBranch(ctx, cfg, repo, "main", scanMode)
 }
 
+// ProgressFunc is a callback for sending progress messages during scans
+type ProgressFunc func(msg string)
+
 // ScanRepositoryWithBranch runs a scan on a discovered repository with specific branch (exported for UI use)
 func ScanRepositoryWithBranch(ctx context.Context, cfg *config.Config, repo DiscoveredRepository, branch string, scanMode string) (*ScanReport, error) {
+	return ScanRepositoryWithBranchAndProgress(ctx, cfg, repo, branch, scanMode, nil)
+}
+
+// ScanRepositoryWithBranchAndProgress runs a scan with progress callback for UI updates
+func ScanRepositoryWithBranchAndProgress(ctx context.Context, cfg *config.Config, repo DiscoveredRepository, branch string, scanMode string, progress ProgressFunc) (*ScanReport, error) {
+	// Helper to send progress if callback is provided
+	sendProgress := func(msg string) {
+		if progress != nil {
+			progress(msg)
+		}
+	}
 	// Build repo URL info
 	repoInfo := &repository.RepoURLInfo{
 		URL:      repo.URL,
@@ -393,10 +407,12 @@ func ScanRepositoryWithBranch(ctx context.Context, cfg *config.Config, repo Disc
 		}
 	}
 
+	sendProgress(fmt.Sprintf("Using %s mode", scanMode))
+
 	if scanMode == "remote" {
-		return executeRemoteScan(ctx, cfg, repoInfo, scanners, opts)
+		return executeRemoteScanWithProgress(ctx, cfg, repoInfo, scanners, opts, progress)
 	}
-	return executeStandaloneScan(ctx, cfg, repoInfo, scanners, opts)
+	return executeStandaloneScanWithProgress(ctx, cfg, repoInfo, scanners, opts, progress)
 }
 
 // FetchBranches retrieves branches for a discovered repository (exported for UI use)
@@ -1046,6 +1062,112 @@ func executeRemoteScan(ctx context.Context, cfg *config.Config, repoInfo *reposi
 	return report, nil
 }
 
+// executeRemoteScanWithProgress is like executeRemoteScan but with progress callbacks for UI
+func executeRemoteScanWithProgress(ctx context.Context, cfg *config.Config, repoInfo *repository.RepoURLInfo, scanners []string, opts *RepoScanOptions, progress ProgressFunc) (*ScanReport, error) {
+	sendProgress := func(msg string) {
+		if progress != nil {
+			progress(msg)
+		}
+		slog.Info(msg)
+	}
+
+	srsURL := opts.SRSURL
+	if srsURL == "" {
+		srsURL = cfg.SRS.APIURL
+	}
+	if srsURL == "" {
+		return nil, fmt.Errorf("SRS API URL not configured. Use --srs-url flag or set srs.api_url in config")
+	}
+
+	sendProgress(fmt.Sprintf("SRS endpoint: %s", srsURL))
+
+	// Create auth provider from config
+	auth := repository.NewAuthProviderFromConfig(cfg)
+	cloneManager := repository.NewCloneManager("", auth)
+
+	// Build clone URL if not already set
+	if repoInfo.CloneURL == "" && repoInfo.Provider != repository.Unknown {
+		switch repoInfo.Provider {
+		case repository.GitHub:
+			repoInfo.CloneURL = fmt.Sprintf("https://github.com/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+		case repository.GitLab:
+			baseURL := "https://gitlab.com"
+			if len(cfg.Git.GitLab) > 0 && cfg.Git.GitLab[0].APIURL != "" {
+				baseURL = strings.TrimSuffix(cfg.Git.GitLab[0].APIURL, "/api/v4")
+			}
+			repoInfo.CloneURL = fmt.Sprintf("%s/%s/%s.git", baseURL, repoInfo.Owner, repoInfo.Repo)
+		case repository.Bitbucket:
+			repoInfo.CloneURL = fmt.Sprintf("https://bitbucket.org/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+		}
+	}
+
+	// Clone and create zip
+	sendProgress(fmt.Sprintf("Cloning %s @ %s...", repoInfo.CloneURL, repoInfo.Branch))
+	cloneResult, err := cloneManager.CloneAndZip(ctx, repoInfo, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to clone repository: %w", err)
+	}
+	defer func() { _ = cloneManager.Cleanup(cloneResult) }()
+
+	sendProgress(fmt.Sprintf("Cloned: commit %s", cloneResult.CommitHash[:8]))
+
+	// Submit to SRS
+	sendProgress("Submitting to SRS...")
+	srsResponse, err := submitToSRS(ctx, srsURL, cloneResult.ZipPath, repoInfo, scanners)
+	if err != nil {
+		return nil, fmt.Errorf("failed to submit to SRS: %w", err)
+	}
+
+	sendProgress(fmt.Sprintf("SRS job submitted: %s", srsResponse.JobStatusURL))
+
+	report := &ScanReport{
+		Repository: repoInfo.URL,
+		Branch:     cloneResult.Branch,
+		Commit:     cloneResult.CommitHash,
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Status:     "submitted",
+		Scanners:   scanners,
+		Results: map[string]interface{}{
+			"srs": map[string]interface{}{
+				"job_status_url": srsResponse.JobStatusURL,
+				"status":         "submitted",
+			},
+		},
+	}
+
+	// If async mode, return immediately
+	if opts.Async {
+		sendProgress("Async mode: returning job URL without waiting")
+		return report, nil
+	}
+
+	// Wait for job completion with progress
+	waitConfig := srs.WaitConfig{
+		PollInterval: time.Duration(opts.PollInterval) * time.Second,
+		MaxTimeout:   time.Duration(opts.MaxWait) * time.Minute,
+		MaxRetries:   100,
+	}
+
+	srsClient := srs.NewClient(waitConfig)
+	jobResponse, err := srsClient.WaitForJobWithProgress(ctx, srsResponse.JobStatusURL, func(msg string) {
+		sendProgress(msg)
+	})
+	if err != nil {
+		sendProgress(fmt.Sprintf("SRS wait failed: %s", err.Error()))
+		report.Status = "wait_failed"
+		report.Error = err.Error()
+		return report, nil // Return partial results
+	}
+
+	// Update report with final results
+	report.Status = "completed"
+	report.Results = srs.GetFindingsSummary(jobResponse)
+	report.Results["job_status_url"] = srsResponse.JobStatusURL
+
+	sendProgress("SRS scan complete")
+	return report, nil
+}
+
 func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *repository.RepoURLInfo, scanners []string, opts *RepoScanOptions) (*ScanReport, error) {
 	slog.Info("Executing standalone scan with local binaries")
 
@@ -1157,6 +1279,144 @@ func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *re
 
 	// Write debug output if enabled
 	if opts.Debug {
+		if err := writeDebugOutput(report, standaloneResults, opts); err != nil {
+			slog.Warn("Failed to write debug output", "error", err)
+		}
+	}
+
+	return report, nil
+}
+
+// executeStandaloneScanWithProgress is like executeStandaloneScan but with progress callbacks
+func executeStandaloneScanWithProgress(ctx context.Context, cfg *config.Config, repoInfo *repository.RepoURLInfo, scanners []string, opts *RepoScanOptions, progress ProgressFunc) (*ScanReport, error) {
+	sendProgress := func(msg string) {
+		if progress != nil {
+			progress(msg)
+		}
+		slog.Info(msg)
+	}
+
+	sendProgress("Checking tool availability...")
+
+	// Check tool availability
+	toolStatuses := standalone.CheckTools(opts.AssetsDir)
+
+	// Check if any requested scanners are unavailable
+	standaloneTypes := standalone.ParseScannerNames(scanners)
+	missingTools := false
+	for _, status := range toolStatuses {
+		for _, scannerType := range standaloneTypes {
+			if string(scannerType) == status.Name && !status.Available {
+				missingTools = true
+				break
+			}
+		}
+	}
+
+	if missingTools {
+		standalone.PrintToolStatus(toolStatuses)
+		return nil, fmt.Errorf("required standalone tools are not installed - see instructions above")
+	}
+
+	var scanPath string
+	var branch string
+	var commit string
+	var repoURL string
+
+	// Check if we're using local path mode (no cloning needed)
+	if opts.LocalPath != "" {
+		// Use local path directly - no cloning
+		absPath, err := filepath.Abs(opts.LocalPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve local path: %w", err)
+		}
+		scanPath = absPath
+		branch = opts.Branch
+		commit = opts.Commit
+		if repoInfo != nil && repoInfo.URL != "" {
+			repoURL = repoInfo.URL
+		} else {
+			repoURL = "local://" + absPath
+		}
+		sendProgress(fmt.Sprintf("Using local path: %s", scanPath))
+	} else {
+		// Clone repository
+		sendProgress(fmt.Sprintf("Cloning %s @ %s...", repoInfo.CloneURL, repoInfo.Branch))
+
+		// Create auth provider from config
+		auth := repository.NewAuthProviderFromConfig(cfg)
+		cloneManager := repository.NewCloneManager("", auth)
+
+		// Build clone URL if not already set
+		if repoInfo.CloneURL == "" && repoInfo.Provider != repository.Unknown {
+			switch repoInfo.Provider {
+			case repository.GitHub:
+				repoInfo.CloneURL = fmt.Sprintf("https://github.com/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+			case repository.GitLab:
+				baseURL := "https://gitlab.com"
+				if len(cfg.Git.GitLab) > 0 && cfg.Git.GitLab[0].APIURL != "" {
+					baseURL = strings.TrimSuffix(cfg.Git.GitLab[0].APIURL, "/api/v4")
+				}
+				repoInfo.CloneURL = fmt.Sprintf("%s/%s/%s.git", baseURL, repoInfo.Owner, repoInfo.Repo)
+			case repository.Bitbucket:
+				repoInfo.CloneURL = fmt.Sprintf("https://bitbucket.org/%s/%s.git", repoInfo.Owner, repoInfo.Repo)
+			}
+		}
+
+		cloneResult, err := cloneManager.Clone(ctx, repoInfo, true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone repository: %w", err)
+		}
+		defer func() { _ = cloneManager.Cleanup(cloneResult) }()
+
+		sendProgress(fmt.Sprintf("Cloned: %s (commit: %s)", cloneResult.Branch, cloneResult.CommitHash[:8]))
+		scanPath = cloneResult.Path
+		branch = cloneResult.Branch
+		commit = cloneResult.CommitHash
+		repoURL = repoInfo.URL
+	}
+
+	// Run standalone scanners with progress updates
+	sendProgress(fmt.Sprintf("Running scanners: %v (parallel: %v)", scanners, opts.Parallel))
+
+	standaloneResults, err := standalone.RunStandaloneScansParallelWithProgress(ctx, scanPath, standaloneTypes, opts.AssetsDir, opts.Parallel, func(scanner, status string) {
+		sendProgress(fmt.Sprintf("[%s] %s", scanner, status))
+	})
+	if err != nil {
+		return nil, fmt.Errorf("standalone scan failed: %w", err)
+	}
+
+	// Convert standalone results to ScanReport format
+	report := &ScanReport{
+		Repository: repoURL,
+		Branch:     branch,
+		Commit:     commit,
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Status:     "completed",
+		Scanners:   scanners,
+		Results:    make(map[string]interface{}),
+	}
+
+	for scannerName, result := range standaloneResults {
+		report.Results[scannerName] = result.Results
+		if result.Error != "" {
+			report.Results[scannerName+"_error"] = result.Error
+			sendProgress(fmt.Sprintf("[%s] Error: %s", scannerName, result.Error))
+		} else {
+			// Extract findings count for progress message
+			if count, ok := result.Results["findings_count"]; ok {
+				sendProgress(fmt.Sprintf("[%s] Complete: %v findings", scannerName, count))
+			} else if count, ok := result.Results["vulnerabilities_count"]; ok {
+				sendProgress(fmt.Sprintf("[%s] Complete: %v vulnerabilities", scannerName, count))
+			} else {
+				sendProgress(fmt.Sprintf("[%s] Complete", scannerName))
+			}
+		}
+	}
+
+	// Write debug output if enabled
+	if opts.Debug {
+		sendProgress("Saving reports...")
 		if err := writeDebugOutput(report, standaloneResults, opts); err != nil {
 			slog.Warn("Failed to write debug output", "error", err)
 		}
