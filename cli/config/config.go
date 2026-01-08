@@ -5,8 +5,13 @@ import (
 	"os"
 	"path/filepath"
 
+	_ "embed"
+
 	"github.com/spf13/cobra"
 )
+
+//go:embed config.example.yaml
+var exampleConfig []byte
 
 // NewConfigCmd creates the config command
 func NewConfigCmd() *cobra.Command {
@@ -61,19 +66,13 @@ Example:
 				return
 			}
 
-			// Copy example config content
-			examplePath := "config.example.yaml"
-			exampleContent, err := os.ReadFile(examplePath)
-			if err != nil {
-				slog.Error("Failed to read example config file", "error", err)
-				return
-			}
-			if err := os.WriteFile(configFile, exampleContent, 0600); err != nil {
+			// Write embedded example config content
+			if err := os.WriteFile(configFile, exampleConfig, 0600); err != nil {
 				slog.Error("Failed to write to config file", "error", err)
 				return
 			}
 
-			slog.Info("Configuration file created successfully")
+			slog.Info("Configuration file created successfully", "path", configFile)
 		},
 	}
 }
