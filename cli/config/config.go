@@ -2,6 +2,8 @@ package config
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -34,7 +36,43 @@ Example:
   securelens config init`,
 		Run: func(cmd *cobra.Command, args []string) {
 			slog.Info("Initializing configuration")
-			// TODO: Implement configuration initialization logic
+
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				slog.Error("Failed to get home directory", "error", err)
+				return
+			}
+
+			configDir := filepath.Join(homeDir, ".securelens")
+			configFile := filepath.Join(configDir, "config.yaml")
+
+			// Create the directory if it doesn't exist
+			if err := os.MkdirAll(configDir, 0700); err != nil {
+				slog.Error("Failed to create config directory", "error", err)
+				return
+			}
+
+			// Check if the config file already exists
+			if _, err := os.Stat(configFile); err == nil {
+				slog.Warn("Configuration file already exists", "path", configFile)
+				return
+			} else if !os.IsNotExist(err) {
+				slog.Error("Failed to check config file", "error", err)
+				return
+			}
+
+			// Copy example config content
+			examplePath := "config.example.yaml"
+			exampleContent, err := os.ReadFile(examplePath)
+			if err != nil {
+				slog.Error("Failed to read example config file", "error", err)
+				return
+			}
+			if err := os.WriteFile(configFile, exampleContent, 0600); err != nil {
+				slog.Error("Failed to write to config file", "error", err)
+				return
+			}
+
 			slog.Info("Configuration file created successfully")
 		},
 	}
