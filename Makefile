@@ -88,6 +88,9 @@ vet:
 	@echo "$(GREEN)Running go vet...$(NC)"
 	$(GO) vet ./...
 
+config: build
+	./securelens config init
+
 # CI target - runs all checks
 ci: fmt vet test
 	@echo "$(GREEN)All CI checks passed!$(NC)"
