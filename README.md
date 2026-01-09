@@ -18,8 +18,10 @@ A CLI-based vulnerability scanning tool that aggregates results from multiple se
 ```bash
 git clone https://github.com/splunk/securelens.git
 cd securelens
-go build -o securelens .
+make config
 ```
+
+The Makefile target will build the `securelens` binary and initialize the configuration file.
 
 ### 2. Run a Scan
 
