@@ -131,7 +131,7 @@ func Load(configPath string) (*Config, error) {
 	} else {
 		viper.SetConfigName("config")
 		viper.AddConfigPath("$HOME/.securelens")
-		viper.AddConfigPath(".")
+		viper.AddConfigPath("./cli/config")
 		viper.AddConfigPath("/etc/securelens")
 	}
 
