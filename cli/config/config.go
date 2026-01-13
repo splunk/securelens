@@ -2,9 +2,16 @@ package config
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
+
+	_ "embed"
 
 	"github.com/spf13/cobra"
 )
+
+//go:embed config.example.yaml
+var exampleConfig []byte
 
 // NewConfigCmd creates the config command
 func NewConfigCmd() *cobra.Command {
@@ -34,8 +41,38 @@ Example:
   securelens config init`,
 		Run: func(cmd *cobra.Command, args []string) {
 			slog.Info("Initializing configuration")
-			// TODO: Implement configuration initialization logic
-			slog.Info("Configuration file created successfully")
+
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				slog.Error("Failed to get home directory", "error", err)
+				return
+			}
+
+			configDir := filepath.Join(homeDir, ".securelens")
+			configFile := filepath.Join(configDir, "config.yaml")
+
+			// Create the directory if it doesn't exist
+			if err := os.MkdirAll(configDir, 0700); err != nil {
+				slog.Error("Failed to create config directory", "error", err)
+				return
+			}
+
+			// Check if the config file already exists
+			if _, err := os.Stat(configFile); err == nil {
+				slog.Warn("Configuration file already exists", "path", configFile)
+				return
+			} else if !os.IsNotExist(err) {
+				slog.Error("Failed to check config file", "error", err)
+				return
+			}
+
+			// Write embedded example config content
+			if err := os.WriteFile(configFile, exampleConfig, 0600); err != nil {
+				slog.Error("Failed to write to config file", "error", err)
+				return
+			}
+
+			slog.Info("Configuration file created successfully", "path", configFile)
 		},
 	}
 }

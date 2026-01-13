@@ -22,7 +22,7 @@ func TestLoadWithConfigFile(t *testing.T) {
 	defer func() { _ = os.Unsetenv("TEST_GITHUB_TOKEN") }()
 
 	// Load config from example file
-	cfg, err := Load("../../config.example.yaml")
+	cfg, err := Load("../../cli/config/config.example.yaml")
 	require.NoError(t, err, "Failed to load config")
 	require.NotNil(t, cfg, "Config should not be nil")
 
