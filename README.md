@@ -48,7 +48,7 @@ For local scanning without SRS, install scanner binaries:
 
 ```bash
 # Install all scanners to ~/.local/bin
-make install_scanners INSTALL_DIR=~/.local/bin
+make install_scan_tools_standalone INSTALL_DIR=~/.local/bin
 
 # Ensure ~/.local/bin is in your PATH
 export PATH="$HOME/.local/bin:$PATH"
@@ -253,6 +253,144 @@ scanners:
     severity: "CRITICAL,HIGH,MEDIUM"
   trufflehog:
     only_verified: false
+```
+
+## Splunk Integration
+
+SecureLens can send scan results to Splunk via HEC (HTTP Event Collector). Each finding/vulnerability/secret is sent as a separate event.
+
+### Run Splunk Locally (Docker)
+
+Pull the Splunk image:
+
+```bash
+docker pull splunk/splunk:latest
+```
+
+On macOS (Apple Silicon), use the Linux AMD64 image:
+
+```bash
+docker pull splunk/splunk:latest --platform linux/amd64
+```
+
+Start Splunk Enterprise:
+
+```bash
+docker run -d --name splunk \
+  -p 8000:8000 -p 8088:8088 \
+  -e SPLUNK_START_ARGS='--accept-license' \
+  -e "SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com" \
+  -e SPLUNK_PASSWORD='your_secure_password' \
+  splunk/splunk:latest start
+```
+
+On macOS (Apple Silicon):
+
+```bash
+docker run -d --name splunk --platform linux/amd64 \
+  -p 8000:8000 -p 8088:8088 \
+  -e SPLUNK_START_ARGS='--accept-license' \
+  -e "SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com" \
+  -e SPLUNK_PASSWORD='your_secure_password' \
+  splunk/splunk:latest start
+```
+
+Open the UI at http://localhost:8000 and sign in as `admin` with the password you set.
+
+Optional: switch to the free license (after the trial ends, this happens automatically). Go to Settings -> Licensing -> Change License Group -> Free License.
+
+### Enable HEC and Create a Token
+
+1. Settings -> Data Inputs -> HTTP Event Collector -> Global Settings -> Enable -> Save.
+2. Click New Token, choose a name, then set the sourcetype to `_json` and select the index you want (for example, `main`).
+3. Copy the generated token.
+
+### Configure SecureLens
+
+Add this to your config file (for local Splunk):
+
+```yaml
+splunk:
+  enabled: true
+  hec_endpoint: "http://localhost:8088/services/collector"
+  hec_token: "your-hec-token"
+```
+
+Run a standalone scan to send events:
+
+```bash
+./securelens scan repo https://github.com/org/repo --mode standalone
+```
+
+### Splunk Searches (Table Views)
+
+Use these searches to build tables for each scanner. Replace `index` with your value.
+
+OpenGrep (one event per finding):
+
+```spl
+index=main sourcetype=_json scanner=opengrep
+| spath
+| spath path=results.findings{} output=finding
+| spath input=finding path=check_id output=rule_id
+| spath input=finding path=path output=file
+| spath input=finding path=start.line output=line
+| spath input=finding path=extra.severity output=severity
+| spath input=finding path=extra.message output=message
+| table _time scanner severity rule_id file line message
+| appendpipe [
+  stats count
+  | where count=0
+  | eval _time=now(), scanner="opengrep", severity="-", rule_id="No findings", file="-", line="-", message="-"
+  | table _time scanner severity rule_id file line message
+]
+```
+
+Trivy (one event per vulnerability):
+
+```spl
+index=main sourcetype=_json scanner=trivy
+| spath
+| spath path=results.results{} output=entry
+| spath input=entry path=Target output=target
+| spath input=entry path=Vulnerabilities{} output=vuln
+| spath input=vuln path=VulnerabilityID output=cve
+| spath input=vuln path=PkgName output=package
+| spath input=vuln path=InstalledVersion output=installed
+| spath input=vuln path=FixedVersion output=fixed
+| spath input=vuln path=Severity output=severity
+| spath input=vuln path=Title output=title
+| table _time scanner severity cve package installed fixed target title
+| appendpipe [
+  stats count
+  | where count=0
+  | eval _time=now(), scanner="trivy", severity="-", cve="No findings", package="-", installed="-", fixed="-", target="-", title="-"
+  | table _time scanner severity cve package installed fixed target title
+]
+```
+
+Trufflehog (one event per secret):
+
+```spl
+index=main sourcetype=_json scanner=trufflehog
+| spath
+| spath path=results.findings{} output=finding
+| spath input=finding path=DetectorName output=detector
+| spath input=finding path=Verified output=verified
+| spath input=finding path=Redacted output=redacted
+| spath input=finding path=SourceMetadata.Data.Git.file output=file_git
+| spath input=finding path=SourceMetadata.Data.Git.line output=line_git
+| spath input=finding path=SourceMetadata.Data.Filesystem.file output=file_fs
+| spath input=finding path=SourceMetadata.Data.Filesystem.line output=line_fs
+| eval file=coalesce(file_git, file_fs), line=coalesce(line_git, line_fs)
+| where detector!=""
+| table _time scanner verified detector file line redacted
+| appendpipe [
+  stats count
+  | where count=0
+  | eval _time=now(), scanner="trufflehog", verified="-", detector="No findings", file="-", line="-", redacted="-"
+  | table _time scanner verified detector file line redacted
+]
 ```
 
 ## Command Reference
