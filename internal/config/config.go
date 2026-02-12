@@ -17,6 +17,7 @@ type Config struct {
 	Scanning  ScanningConfig  `yaml:"scanning"`
 	Output    OutputConfig    `yaml:"output"`
 	Discovery DiscoveryConfig `yaml:"discovery"`
+	Splunk    SplunkConfig    `yaml:"splunk"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -118,6 +119,12 @@ type DiscoveryConfig struct {
 	Languages       []string `yaml:"languages"`
 	ExcludeArchived bool     `yaml:"exclude_archived"`
 	OutputFormat    string   `yaml:"output_format"`
+}
+
+type SplunkConfig struct {
+	Enabled     bool   `yaml:"enabled" mapstructure:"enabled"`
+	HECEndpoint string `yaml:"hec_endpoint" mapstructure:"hec_endpoint"`
+	HECToken    string `yaml:"hec_token" mapstructure:"hec_token"`
 }
 
 // Load loads configuration from file and environment variables
