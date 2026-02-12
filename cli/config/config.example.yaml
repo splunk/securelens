@@ -34,3 +34,8 @@ git:
     #   username: ${BITBUCKET_SERVER_USERNAME}
     #   app_password: ${BITBUCKET_SERVER_PASSWORD}
     #   api_url: https://bitbucket.company.com
+
+splunk:
+  enabled: true
+  hec_endpoint: "https://splunk.example.com:8088/services/collector"
+  hec_token: "your-hec-token"
