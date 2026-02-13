@@ -1,0 +1,841 @@
+{
+  "scanner": "trivy",
+  "status": "COMPLETE",
+  "start_time": "2026-02-13T09:16:34.608307-03:00",
+  "end_time": "2026-02-13T09:16:35.443525-03:00",
+  "duration": "835.220041ms",
+  "results": {
+    "artifact_name": "/tmp/securelens-benderbot-309527264",
+    "artifact_type": "repository",
+    "by_severity": {
+      "CRITICAL": 1,
+      "HIGH": 2
+    },
+    "results": [
+      {
+        "Class": "lang-pkgs",
+        "Packages": [
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "Deprecated",
+            "Version": "1.2.18"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "Jinja2",
+            "Version": "3.1.6"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "MarkupSafe",
+            "Version": "3.0.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "PyJWT",
+            "Version": "2.10.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "PyMySQL",
+            "Version": "1.1.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "PyYAML",
+            "Version": "6.0.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "Pygments",
+            "Version": "2.19.2"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "SQLAlchemy",
+            "Version": "2.0.43"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "TatSu",
+            "Version": "5.13.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "aioboto3",
+            "Version": "15.5.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "aiobotocore",
+            "Version": "2.25.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "aiofiles",
+            "Version": "25.1.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "aiohappyeyeballs",
+            "Version": "2.6.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "aiohttp",
+            "Version": "3.13.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "aioitertools",
+            "Version": "0.12.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "aiosignal",
+            "Version": "1.4.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "aiosqlite",
+            "Version": "0.21.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "annotated-types",
+            "Version": "0.7.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "anyio",
+            "Version": "4.11.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "arrow",
+            "Version": "1.3.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "asyncpg",
+            "Version": "0.30.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "attrs",
+            "Version": "25.3.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "autopep8",
+            "Version": "2.3.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "azure-core",
+            "Version": "1.38.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "azure-identity",
+            "Version": "1.25.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "banks",
+            "Version": "2.2.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "boto3",
+            "Version": "1.40.61"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "botocore",
+            "Version": "1.40.61"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "certifi",
+            "Version": "2025.8.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "cffi",
+            "Version": "2.0.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "charset-normalizer",
+            "Version": "3.4.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "click",
+            "Version": "8.3.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "colorama",
+            "Version": "0.4.6"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "cryptography",
+            "Version": "46.0.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "dataclasses-json",
+            "Version": "0.6.7"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "dirtyjson",
+            "Version": "1.0.8"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "distro",
+            "Version": "1.9.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "filetype",
+            "Version": "1.2.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "frozenlist",
+            "Version": "1.7.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "fsspec",
+            "Version": "2025.9.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "greenlet",
+            "Version": "3.2.4"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "griffe",
+            "Version": "1.14.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "h11",
+            "Version": "0.16.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "httpcore",
+            "Version": "1.0.9"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "httpx",
+            "Version": "0.28.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "ics",
+            "Version": "0.7.2"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "idna",
+            "Version": "3.10"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "iniconfig",
+            "Version": "2.1.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "jiter",
+            "Version": "0.11.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "jmespath",
+            "Version": "1.0.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "joblib",
+            "Version": "1.5.2"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "llama-index-core",
+            "Version": "0.14.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "llama-index-embeddings-bedrock",
+            "Version": "0.7.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "llama-index-embeddings-ollama",
+            "Version": "0.8.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "llama-index-instrumentation",
+            "Version": "0.4.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "llama-index-llms-azure-openai",
+            "Version": "0.4.2"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "llama-index-llms-openai",
+            "Version": "0.6.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "llama-index-vector-stores-postgres",
+            "Version": "0.7.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "llama-index-workflows",
+            "Version": "2.5.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "msal",
+            "Version": "1.34.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "msal-extensions",
+            "Version": "1.3.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "multidict",
+            "Version": "6.6.4"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "mypy_extensions",
+            "Version": "1.1.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "mysql-connector-python",
+            "Version": "9.4.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "nest-asyncio",
+            "Version": "1.6.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "networkx",
+            "Version": "3.5"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "nltk",
+            "Version": "3.9.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "numpy",
+            "Version": "2.3.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "ollama",
+            "Version": "0.6.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "openai",
+            "Version": "1.109.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "packaging",
+            "Version": "25.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pgvector",
+            "Version": "0.4.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pillow",
+            "Version": "11.3.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "platformdirs",
+            "Version": "4.4.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pluggy",
+            "Version": "1.6.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "propcache",
+            "Version": "0.3.2"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "psycopg2-binary",
+            "Version": "2.9.10"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pycodestyle",
+            "Version": "2.14.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pycparser",
+            "Version": "2.23"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pydantic",
+            "Version": "2.11.9"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pydantic_core",
+            "Version": "2.33.2"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pytest",
+            "Version": "8.4.2"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pytest-asyncio",
+            "Version": "1.2.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "python-dateutil",
+            "Version": "2.9.0.post0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "python-dotenv",
+            "Version": "1.0.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "pyway",
+            "Version": "0.3.26"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "regex",
+            "Version": "2025.9.18"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "requests",
+            "Version": "2.32.4"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "s3transfer",
+            "Version": "0.14.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "setuptools",
+            "Version": "80.9.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "six",
+            "Version": "1.17.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "slack_bolt",
+            "Version": "1.20.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "slack_sdk",
+            "Version": "3.33.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "slackclient",
+            "Version": "2.9.4"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "sniffio",
+            "Version": "1.3.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "strip-ansi",
+            "Version": "0.1.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "tabulate",
+            "Version": "0.9.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "tenacity",
+            "Version": "9.1.2"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "tiktoken",
+            "Version": "0.11.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "tqdm",
+            "Version": "4.67.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "types-python-dateutil",
+            "Version": "2.9.0.20250822"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "typing-inspect",
+            "Version": "0.9.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "typing-inspection",
+            "Version": "0.4.1"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "typing_extensions",
+            "Version": "4.15.0"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "urllib3",
+            "Version": "2.6.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "webexpythonsdk",
+            "Version": "2.0.5"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "wrapt",
+            "Version": "1.17.3"
+          },
+          {
+            "ID": "",
+            "Licenses": null,
+            "Name": "yarl",
+            "Version": "1.20.1"
+          }
+        ],
+        "Target": "requirements.txt",
+        "Type": "pip",
+        "Vulnerabilities": [
+          {
+            "CVSS": {
+              "ghsa": {
+                "V2Score": 0,
+                "V2Vector": "",
+                "V3Score": 9.8,
+                "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+              },
+              "redhat": {
+                "V2Score": 0,
+                "V2Vector": "",
+                "V3Score": 6.3,
+                "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L"
+              }
+            },
+            "CweIDs": [
+              "CWE-89"
+            ],
+            "Description": "PyMySQL through 1.1.0 allows SQL injection if used with untrusted JSON input because keys are not escaped by escape_dict.",
+            "FixedVersion": "1.1.1",
+            "InstalledVersion": "1.1.0",
+            "LastModifiedDate": "2024-11-21T16:15:24.847Z",
+            "PkgName": "PyMySQL",
+            "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-36039",
+            "PublishedDate": "2024-05-21T16:15:26.293Z",
+            "References": [
+              "https://access.redhat.com/errata/RHSA-2024:9194",
+              "https://access.redhat.com/security/cve/CVE-2024-36039",
+              "https://bugzilla.redhat.com/2282821",
+              "https://bugzilla.redhat.com/show_bug.cgi?id=2282821",
+              "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-36039",
+              "https://errata.almalinux.org/9/ALSA-2024-9194.html",
+              "https://errata.rockylinux.org/RLSA-2024:9194",
+              "https://github.com/PyMySQL/PyMySQL",
+              "https://github.com/PyMySQL/PyMySQL/commit/521e40050cb386a499f68f483fefd144c493053c",
+              "https://github.com/PyMySQL/PyMySQL/releases/tag/v1.1.1",
+              "https://github.com/advisories/GHSA-v9hf-5j83-6xpp",
+              "https://linux.oracle.com/cve/CVE-2024-36039.html",
+              "https://linux.oracle.com/errata/ELSA-2024-9194.html",
+              "https://lists.debian.org/debian-lts-announce/2024/05/msg00017.html",
+              "https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/23VXBV34GFRICCVYZ6KFMSSWY5UEXCF5",
+              "https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/23VXBV34GFRICCVYZ6KFMSSWY5UEXCF5/",
+              "https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/35VOJS3SRJNLQIO7YTZFNM6RWHIHWTMK",
+              "https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/35VOJS3SRJNLQIO7YTZFNM6RWHIHWTMK/",
+              "https://nvd.nist.gov/vuln/detail/CVE-2024-36039",
+              "https://ubuntu.com/security/notices/USN-6801-1",
+              "https://www.cve.org/CVERecord?id=CVE-2024-36039"
+            ],
+            "Severity": "CRITICAL",
+            "Status": "fixed",
+            "Title": "python-pymysql: SQL injection if used with untrusted JSON input",
+            "VulnerabilityID": "CVE-2024-36039"
+          },
+          {
+            "CVSS": {
+              "redhat": {
+                "V2Score": 0,
+                "V2Vector": "",
+                "V3Score": 7.4,
+                "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+              }
+            },
+            "CweIDs": [
+              "CWE-345"
+            ],
+            "Description": "cryptography is a package designed to expose cryptographic primitives and recipes to Python developers. Prior to 46.0.5, the public_key_from_numbers (or EllipticCurvePublicNumbers.public_key()), EllipticCurvePublicNumbers.public_key(), load_der_public_key() and load_pem_public_key() functions do not verify that the point belongs to the expected prime-order subgroup of the curve. This missing validation allows an attacker to provide a public key point P from a small-order subgroup. This can lead to security issues in various situations, such as the most commonly used signature verification (ECDSA) and shared key negotiation (ECDH). When the victim computes the shared secret as S = [victim_private_key]P via ECDH, this leaks information about victim_private_key mod (small_subgroup_order). For curves with cofactor \u003e 1, this reveals the least significant bits of the private key. When these weak public keys are used in ECDSA , it's easy to forge signatures on the small subgroup. Only SECT curves are impacted by this. This vulnerability is fixed in 46.0.5.",
+            "FixedVersion": "46.0.5",
+            "InstalledVersion": "46.0.1",
+            "LastModifiedDate": "2026-02-11T15:27:26.37Z",
+            "PkgName": "cryptography",
+            "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-26007",
+            "PublishedDate": "2026-02-10T22:17:00.307Z",
+            "References": [
+              "http://www.openwall.com/lists/oss-security/2026/02/10/4",
+              "https://access.redhat.com/security/cve/CVE-2026-26007",
+              "https://github.com/pyca/cryptography",
+              "https://github.com/pyca/cryptography/commit/0eebb9dbb6343d9bc1d91e5a2482ed4e054a6d8c",
+              "https://github.com/pyca/cryptography/releases/tag/46.0.5",
+              "https://github.com/pyca/cryptography/security/advisories/GHSA-r6ph-v2qm-q3c2",
+              "https://nvd.nist.gov/vuln/detail/CVE-2026-26007",
+              "https://www.cve.org/CVERecord?id=CVE-2026-26007"
+            ],
+            "Severity": "HIGH",
+            "Status": "fixed",
+            "Title": "cryptography: cryptography Subgroup Attack Due to Missing Subgroup Validation for SECT Curves",
+            "VulnerabilityID": "CVE-2026-26007"
+          },
+          {
+            "CVSS": {
+              "redhat": {
+                "V2Score": 0,
+                "V2Vector": "",
+                "V3Score": 7.3,
+                "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L"
+              }
+            },
+            "CweIDs": [
+              "CWE-787"
+            ],
+            "Description": "Pillow is a Python imaging library. From 10.3.0 to before 12.1.1, n out-of-bounds write may be triggered when loading a specially crafted PSD image. This vulnerability is fixed in 12.1.1.",
+            "FixedVersion": "12.1.1",
+            "InstalledVersion": "11.3.0",
+            "LastModifiedDate": "2026-02-12T05:17:05.193Z",
+            "PkgName": "pillow",
+            "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-25990",
+            "PublishedDate": "2026-02-11T21:16:20.67Z",
+            "References": [
+              "http://www.openwall.com/lists/oss-security/2026/02/12/1",
+              "https://access.redhat.com/security/cve/CVE-2026-25990",
+              "https://github.com/python-pillow/Pillow",
+              "https://github.com/python-pillow/Pillow/commit/54ba4db542ad3c7b918812a4e2d69c27735a3199",
+              "https://github.com/python-pillow/Pillow/commit/9000313cc5d4a31bdcdd6d7f0781101abab553aa",
+              "https://github.com/python-pillow/Pillow/pull/9427",
+              "https://github.com/python-pillow/Pillow/security/advisories/GHSA-cfh3-3jmp-rvhc",
+              "https://nvd.nist.gov/vuln/detail/CVE-2026-25990",
+              "https://pillow.readthedocs.io/en/stable/releasenotes/12.1.1.html",
+              "https://www.cve.org/CVERecord?id=CVE-2026-25990"
+            ],
+            "Severity": "HIGH",
+            "Status": "fixed",
+            "Title": "pillow: Pillow: Out-of-bounds Write via Specially Crafted PSD Image",
+            "VulnerabilityID": "CVE-2026-25990"
+          }
+        ]
+      },
+      {
+        "Class": "config",
+        "Packages": null,
+        "Target": ".service-manifests/benderbot-component.yaml",
+        "Type": "kubernetes",
+        "Vulnerabilities": null
+      },
+      {
+        "Class": "config",
+        "Packages": null,
+        "Target": "Dockerfile",
+        "Type": "dockerfile",
+        "Vulnerabilities": null
+      },
+      {
+        "Class": "config",
+        "Packages": null,
+        "Target": "terraform",
+        "Type": "terraform",
+        "Vulnerabilities": null
+      },
+      {
+        "Class": "config",
+        "Packages": null,
+        "Target": "terraform/backend.tf",
+        "Type": "terraform",
+        "Vulnerabilities": null
+      },
+      {
+        "Class": "config",
+        "Packages": null,
+        "Target": "terraform/main.tf",
+        "Type": "terraform",
+        "Vulnerabilities": null
+      },
+      {
+        "Class": "config",
+        "Packages": null,
+        "Target": "terraform/test_instance.tf",
+        "Type": "terraform",
+        "Vulnerabilities": null
+      }
+    ],
+    "status": "COMPLETE",
+    "vulnerabilities_count": 3
+  }
+}

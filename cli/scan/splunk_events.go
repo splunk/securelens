@@ -1,8 +1,9 @@
 package scan
 
 import (
-	"encoding/json"
+	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"github.com/splunk/securelens/internal/config"
@@ -21,9 +22,9 @@ func sendStandaloneResultsToSplunk(cfg *config.Config, standaloneResults map[str
 		return
 	}
 
-	splunkClient := newSplunkClient(cfg)
-	if splunkClient == nil {
-		slog.Warn("Splunk client not initialized - check configuration")
+	splunkClient, err := newSplunkClient(cfg)
+	if err != nil {
+		slog.Warn("Splunk client not initialized - check configuration", "error", err)
 		return
 	}
 
@@ -46,11 +47,25 @@ func shouldSendToSplunk(cfg *config.Config, standaloneResults map[string]*standa
 	return true
 }
 
-func newSplunkClient(cfg *config.Config) *splunk.Client {
+func newSplunkClient(cfg *config.Config) (*splunk.Client, error) {
+	if cfg.Splunk.HECEndpoint == "" {
+		return nil, fmt.Errorf("splunk.hec_endpoint is required")
+	}
+	if cfg.Splunk.HECToken == "" {
+		return nil, fmt.Errorf("splunk.hec_token is required")
+	}
+	parsed, err := url.Parse(cfg.Splunk.HECEndpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("splunk.hec_endpoint must be a valid URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("splunk.hec_endpoint must use http or https")
+	}
+
 	return splunk.NewClient(splunk.Config{
 		HECEndpoint: cfg.Splunk.HECEndpoint,
 		Token:       cfg.Splunk.HECToken,
-	})
+	}), nil
 }
 
 func collectScannerNames(standaloneResults map[string]*standalone.StandaloneScanResult) []string {
@@ -70,22 +85,21 @@ func sendScannerEventsToSplunk(splunkClient *splunk.Client, scannerName string, 
 	events := buildStandaloneResultEvents(scannerName, result)
 	slog.Info("Prepared standalone events for Splunk", "scanner", scannerName, "count", len(events))
 
+	sentCount := 0
+	failedCount := 0
 	for _, event := range events {
 		if err := sendStandaloneEvent(splunkClient, scannerName, event, repoCtx); err != nil {
+			failedCount++
 			continue
 		}
+		sentCount++
 	}
 
-	slog.Info("Sent standalone events to Splunk", "scanner", scannerName, "count", len(events))
+	slog.Info("Sent standalone events to Splunk", "scanner", scannerName, "sent", sentCount, "failed", failedCount, "total", len(events))
 }
 
 func sendStandaloneEvent(splunkClient *splunk.Client, scannerName string, event *standalone.StandaloneScanResult, repoCtx splunkRepoContext) error {
-	rawData, err := json.Marshal(buildSplunkEventPayload(event, repoCtx))
-	if err != nil {
-		slog.Error("Failed to marshal standalone event for Splunk", "scanner", scannerName, "error", err)
-		return err
-	}
-	if err := splunkClient.SendEvent(json.RawMessage(rawData)); err != nil {
+	if err := splunkClient.SendEvent(buildSplunkEventPayload(event, repoCtx)); err != nil {
 		slog.Error("Failed to send scan results to Splunk", "scanner", scannerName, "error", err)
 		return err
 	}
@@ -112,12 +126,12 @@ func buildSplunkEventPayload(event *standalone.StandaloneScanResult, repoCtx spl
 
 func buildStandaloneResultEvents(scannerName string, result *standalone.StandaloneScanResult) []*standalone.StandaloneScanResult {
 	switch scannerName {
-	case "opengrep":
-		return splitFindingsResult(result, "opengrep")
-	case "trivy":
+	case string(standalone.ScannerOpengrep):
+		return splitFindingsResult(result, string(standalone.ScannerOpengrep))
+	case string(standalone.ScannerTrivy):
 		return splitTrivyResult(result)
-	case "trufflehog":
-		return splitFindingsResult(result, "trufflehog")
+	case string(standalone.ScannerTrufflehog):
+		return splitFindingsResult(result, string(standalone.ScannerTrufflehog))
 	default:
 		return []*standalone.StandaloneScanResult{result}
 	}

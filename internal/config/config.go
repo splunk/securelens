@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -188,6 +189,9 @@ func (c *Config) Validate() error {
 	if err := validateOutputFormats(c.Output.Format, c.Discovery.OutputFormat); err != nil {
 		return err
 	}
+	if err := validateSplunkConfig(c.Splunk); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -236,6 +240,27 @@ func validateOutputFormats(outputFormat, discoveryFormat string) error {
 		return fmt.Errorf("invalid discovery output format '%s', must be one of: table, json, yaml", discoveryFormat)
 	}
 
+	return nil
+}
+
+// validateSplunkConfig validates Splunk configuration when enabled
+func validateSplunkConfig(cfg SplunkConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.HECEndpoint == "" {
+		return fmt.Errorf("splunk.hec_endpoint is required when splunk.enabled is true")
+	}
+	if cfg.HECToken == "" {
+		return fmt.Errorf("splunk.hec_token is required when splunk.enabled is true")
+	}
+	parsed, err := url.Parse(cfg.HECEndpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("splunk.hec_endpoint must be a valid URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("splunk.hec_endpoint must use http or https")
+	}
 	return nil
 }
 
