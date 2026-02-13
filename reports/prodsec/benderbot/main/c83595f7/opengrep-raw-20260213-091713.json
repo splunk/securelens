@@ -1,0 +1,4362 @@
+{
+  "scanner": "opengrep",
+  "status": "COMPLETE",
+  "start_time": "2026-02-13T09:16:34.608214-03:00",
+  "end_time": "2026-02-13T09:17:13.160598-03:00",
+  "duration": "38.55245775s",
+  "results": {
+    "by_severity": {
+      "ERROR": 31,
+      "INFO": 15,
+      "WARNING": 72
+    },
+    "errors": [
+      {
+        "code": 3,
+        "level": "warn",
+        "message": "Syntax error at line /tmp/securelens-benderbot-309527264/Dockerfile:54:\n `,ro source /root/env.sh \\\n    \u0026\u0026 curl` was unexpected",
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "spans": [
+          {
+            "end": {
+              "col": 12,
+              "line": 55,
+              "offset": 37
+            },
+            "file": "/tmp/securelens-benderbot-309527264/Dockerfile",
+            "start": {
+              "col": 79,
+              "line": 54,
+              "offset": 0
+            }
+          },
+          {
+            "end": {
+              "col": 12,
+              "line": 63,
+              "offset": 37
+            },
+            "file": "/tmp/securelens-benderbot-309527264/Dockerfile",
+            "start": {
+              "col": 79,
+              "line": 62,
+              "offset": 0
+            }
+          }
+        ],
+        "type": [
+          "PartialParsing",
+          [
+            {
+              "end": {
+                "col": 12,
+                "line": 55,
+                "offset": 37
+              },
+              "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+              "start": {
+                "col": 79,
+                "line": 54,
+                "offset": 0
+              }
+            },
+            {
+              "end": {
+                "col": 12,
+                "line": 63,
+                "offset": 37
+              },
+              "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+              "start": {
+                "col": 79,
+                "line": 62,
+                "offset": 0
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    "files_scanned": 140,
+    "findings": [
+      {
+        "check_id": "assets.opengrep-rules.dockerfile.audit.dockerfile-source-not-pinned",
+        "end": {
+          "col": 56,
+          "line": 1,
+          "offset": 55
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "c17f6ecfbd4d1e4a4dd20d9fccb15dddf4e6f0113c3d73a6139fa69fdae5c670da25e071498c0ef6b6965d3891e1c7b21b16ef3b34f712a10107796008acaaa0_0",
+          "is_ignored": false,
+          "lines": "FROM docker-hub.repo.splunkdev.net/library/ubuntu:22.04",
+          "message": "To ensure reproducible builds, pin Dockerfile `FROM` commands to a specific hash. You can find the hash by running `docker pull docker-hub.repo.splunkdev.net/library/ubuntu` and then  specify it with `docker-hub.repo.splunkdev.net/library/ubuntu:22.04@sha256:\u003chash goes here\u003e`",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://stackoverflow.com/a/33511811/4965"
+            ],
+            "technology": [
+              "docker"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "start": {
+          "col": 1,
+          "line": 1,
+          "offset": 0
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.dockerfile.best-practice.missing-no-install-recommends",
+        "end": {
+          "col": 88,
+          "line": 9,
+          "offset": 235
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9bd13ed5593d5295f243500c3ba18c24f4ea881f14db4f2ae259c68b29c17864ff8dafc773eb16fec54bdd41c85d4ff7485bfdb439ed94e93e60d9305878f589_0",
+          "is_ignored": false,
+          "lines": "RUN apt-get update \u0026\u0026 apt-get install -y ca-certificates \u0026\u0026 rm -rf /var/lib/apt/lists/*",
+          "message": "This 'apt-get install' is missing '--no-install-recommends'. This prevents unnecessary packages from being installed, thereby reducing image size. Add '--no-install-recommends'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://github.com/hadolint/hadolint/wiki/DL3015"
+            ],
+            "source-rule-url": "https://github.com/hadolint/hadolint/wiki/DL3015",
+            "technology": [
+              "dockerfile"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "start": {
+          "col": 1,
+          "line": 9,
+          "offset": 148
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.dockerfile.best-practice.remove-package-cache",
+        "end": {
+          "col": 19,
+          "line": 9,
+          "offset": 166
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "b6b1586ae6f8936a64a22fd9c9f108b61331bcea15f691f6a76b7b0bf521dd1c989af73c073142096f34af55546a087226cff9567ced6170ceab0912bdc1f8b7_0",
+          "is_ignored": false,
+          "lines": "RUN apt-get update \u0026\u0026 apt-get install -y ca-certificates \u0026\u0026 rm -rf /var/lib/apt/lists/*",
+          "message": "The package cache was not deleted after running 'apt-get update', which increases the size of the image. Remove the package cache by appending '\u0026\u0026 apt-get clean' at the end of apt-get command chain.",
+          "metadata": {
+            "category": "best-practice",
+            "license": "Commons Clause License Condition v1.0[LGPL-2.1-only]",
+            "references": [
+              "https://github.com/hadolint/hadolint/wiki/DL3009"
+            ],
+            "source-rule-url": "https://github.com/hadolint/hadolint/wiki/DL3009",
+            "technology": [
+              "dockerfile"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "start": {
+          "col": 5,
+          "line": 9,
+          "offset": 152
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.dockerfile.best-practice.missing-no-install-recommends",
+        "end": {
+          "col": 9,
+          "line": 24,
+          "offset": 864
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9bd13ed5593d5295f243500c3ba18c24f4ea881f14db4f2ae259c68b29c17864ff8dafc773eb16fec54bdd41c85d4ff7485bfdb439ed94e93e60d9305878f589_1",
+          "is_ignored": false,
+          "lines": "RUN --mount=type=bind,source=artifactory_conf_files/sources.list,target=/etc/apt/sources.list \\\n    --mount=type=bind,source=artifactory_conf_files/artifactory-primary.gpg,target=/etc/apt/trusted.gpg.d/artifactory-primary.gpg \\\n    --mount=type=bind,source=artifactory_conf_files/artifactory-secondary.gpg,target=/etc/apt/trusted.gpg.d/artifactory-secondary.gpg \\\n    --mount=type=bind,source=artifactory_conf_files/auth.conf,target=/etc/apt/auth.conf \\\n    apt-get update \u0026\u0026 \\\n    apt-get install -y apt-utils \\\n    python3 \\\n    python3-pip \\\n    python3-venv \\\n    git \\\n    rsync \\\n    python3-pymysql \\\n    curl \\\n    wget",
+          "message": "This 'apt-get install' is missing '--no-install-recommends'. This prevents unnecessary packages from being installed, thereby reducing image size. Add '--no-install-recommends'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://github.com/hadolint/hadolint/wiki/DL3015"
+            ],
+            "source-rule-url": "https://github.com/hadolint/hadolint/wiki/DL3015",
+            "technology": [
+              "dockerfile"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "start": {
+          "col": 1,
+          "line": 11,
+          "offset": 237
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.dockerfile.best-practice.remove-package-cache",
+        "end": {
+          "col": 19,
+          "line": 15,
+          "offset": 709
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "b6b1586ae6f8936a64a22fd9c9f108b61331bcea15f691f6a76b7b0bf521dd1c989af73c073142096f34af55546a087226cff9567ced6170ceab0912bdc1f8b7_1",
+          "is_ignored": false,
+          "lines": "    apt-get update \u0026\u0026 \\",
+          "message": "The package cache was not deleted after running 'apt-get update', which increases the size of the image. Remove the package cache by appending '\u0026\u0026 apt-get clean' at the end of apt-get command chain.",
+          "metadata": {
+            "category": "best-practice",
+            "license": "Commons Clause License Condition v1.0[LGPL-2.1-only]",
+            "references": [
+              "https://github.com/hadolint/hadolint/wiki/DL3009"
+            ],
+            "source-rule-url": "https://github.com/hadolint/hadolint/wiki/DL3009",
+            "technology": [
+              "dockerfile"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "start": {
+          "col": 5,
+          "line": 15,
+          "offset": 695
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.dockerfile.best-practice.remove-package-lists",
+        "end": {
+          "col": 19,
+          "line": 15,
+          "offset": 709
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "f1df8f06f04dd2e076c3e3a6a3868bef47a22247967ff8ab3bdd4cf31e7596944ba27d169d23aa2a52b16cb8e8167ff3f5beb53ee778e8281ed06687471c3d6b_0",
+          "is_ignored": false,
+          "lines": "    apt-get update \u0026\u0026 \\",
+          "message": "The package lists were not deleted after running 'apt-get update', which increases the size of the image. Remove the package lists by appending '\u0026\u0026 rm -rf /var/lib/apt/lists/*' at the end of apt-get command chain.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://github.com/hadolint/hadolint/wiki/DL3009"
+            ],
+            "source-rule-url": "https://github.com/hadolint/hadolint/wiki/DL3009",
+            "technology": [
+              "dockerfile"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "start": {
+          "col": 5,
+          "line": 15,
+          "offset": 695
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.dockerfile.best-practice.missing-pip-no-cache-dir",
+        "end": {
+          "col": 95,
+          "line": 31,
+          "offset": 1160
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "41f7cb3ec7e77703e828c3c355d964a3a0eec112b3f2eb5358235be0618ebd0b31d5578bf2e4c9950c13e4e076ea8d9923d2286ca27ed63264787dcf6ac99fb9_0",
+          "is_ignored": false,
+          "lines": "RUN --mount=type=bind,source=artifactory_conf_files/pip.conf,target=/root/.pip/pip.conf \\\n    --mount=type=bind,source=artifactory_conf_files/.pypirc,target=/root/.pypirc \\\n    python3 -m venv ${VENV} \u0026\u0026 source ${VENV}/bin/activate \u0026\u0026 pip3 install -r requirements.txt",
+          "message": "This 'pip3 install' is missing '--no-cache-dir'. This flag prevents package archives from being kept around, thereby reducing image size. Add '--no-cache-dir'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://github.com/hadolint/hadolint/wiki/DL3042"
+            ],
+            "source-rule-url": "https://github.com/hadolint/hadolint/wiki/DL3042",
+            "technology": [
+              "dockerfile"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "start": {
+          "col": 1,
+          "line": 29,
+          "offset": 893
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.dockerfile.best-practice.missing-no-install-recommends",
+        "end": {
+          "col": 61,
+          "line": 39,
+          "offset": 1734
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9bd13ed5593d5295f243500c3ba18c24f4ea881f14db4f2ae259c68b29c17864ff8dafc773eb16fec54bdd41c85d4ff7485bfdb439ed94e93e60d9305878f589_2",
+          "is_ignored": false,
+          "lines": "RUN --mount=type=bind,source=artifactory_conf_files/sources.list,target=/etc/apt/sources.list \\\n    --mount=type=bind,source=artifactory_conf_files/artifactory-primary.gpg,target=/etc/apt/trusted.gpg.d/artifactory-primary.gpg \\\n    --mount=type=bind,source=artifactory_conf_files/artifactory-secondary.gpg,target=/etc/apt/trusted.gpg.d/artifactory-secondary.gpg \\\n    --mount=type=bind,source=artifactory_conf_files/auth.conf,target=/etc/apt/auth.conf \\\n    DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata",
+          "message": "This 'apt-get install' is missing '--no-install-recommends'. This prevents unnecessary packages from being installed, thereby reducing image size. Add '--no-install-recommends'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://github.com/hadolint/hadolint/wiki/DL3015"
+            ],
+            "source-rule-url": "https://github.com/hadolint/hadolint/wiki/DL3015",
+            "technology": [
+              "dockerfile"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/Dockerfile",
+        "start": {
+          "col": 1,
+          "line": 35,
+          "offset": 1220
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 29,
+          "line": 2,
+          "offset": 39
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9200c8e2b476a8ad878f418cf2aa672963e3c1e85b38a02b88929825aab9241743048e86718adc1f81c88718ee07593eb887a40dafe60525516875876064af07_0",
+          "is_ignored": false,
+          "lines": "with open('./key.json', 'w') as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/ansible/write_secret_key_file.py",
+        "start": {
+          "col": 6,
+          "line": 2,
+          "offset": 16
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.generic.secrets.gitleaks.hashicorp-tf-password",
+        "end": {
+          "col": 1,
+          "line": 205,
+          "offset": 6637
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "2e0f70fb3217f95cfc6be8b2d99d305e066c354bfdb55ed3f4c6a244baac48e936a0fb764d247ba0e62f43fa4cc1cfe5ddb94af750e53ffcede13153d4caba89_0",
+          "is_ignored": false,
+          "lines": "SECURELENS_DATABASE_PASSWORD = \"securelens_db_pass\"\nSLACK_TOKEN = \"slack_token\"",
+          "message": "A gitleaks hashicorp-tf-password was detected which attempts to identify hard-coded credentials. It is not recommended to store credentials in source-code, as this risks secrets being leaked and used by either an internal or external malicious adversary. It is recommended to use environment variables to securely provide credentials or retrieve credentials from a secure vault or HSM (Hardware Security Module).",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-798: Use of Hard-coded Credentials"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+            ],
+            "source-rule-url": "https://github.com/zricethezav/gitleaks/tree/master/cmd/generate/config/rules",
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "gitleaks"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/config.py",
+        "start": {
+          "col": 21,
+          "line": 204,
+          "offset": 6605
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.ai.generic.detect-generic-ai-oai",
+        "end": {
+          "col": 30,
+          "line": 49,
+          "offset": 899
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "389d5a363eb62bb0e0b683f62b6206f02c7334ca9376a45ade405aeff7be1c777158c7ecdff18e19a335146443aa8ceead7bf043523370c472728f977ef1d5f4_0",
+          "is_ignored": false,
+          "lines": "llama-index-llms-azure-openai==0.4.2",
+          "message": "Possibly found usage of AI: OpenAI",
+          "metadata": {
+            "category": "maintainability",
+            "confidence": "LOW",
+            "references": [
+              "https://semgrep.dev/blog/2024/detecting-shadow-ai"
+            ],
+            "technology": [
+              "genAI",
+              "LLMs"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/requirements.txt",
+        "start": {
+          "col": 24,
+          "line": 49,
+          "offset": 893
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.ai.generic.detect-generic-ai-oai",
+        "end": {
+          "col": 24,
+          "line": 50,
+          "offset": 930
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "389d5a363eb62bb0e0b683f62b6206f02c7334ca9376a45ade405aeff7be1c777158c7ecdff18e19a335146443aa8ceead7bf043523370c472728f977ef1d5f4_1",
+          "is_ignored": false,
+          "lines": "llama-index-llms-openai==0.6.1",
+          "message": "Possibly found usage of AI: OpenAI",
+          "metadata": {
+            "category": "maintainability",
+            "confidence": "LOW",
+            "references": [
+              "https://semgrep.dev/blog/2024/detecting-shadow-ai"
+            ],
+            "technology": [
+              "genAI",
+              "LLMs"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/requirements.txt",
+        "start": {
+          "col": 18,
+          "line": 50,
+          "offset": 924
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.ai.generic.detect-generic-ai-oai",
+        "end": {
+          "col": 7,
+          "line": 64,
+          "offset": 1212
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "389d5a363eb62bb0e0b683f62b6206f02c7334ca9376a45ade405aeff7be1c777158c7ecdff18e19a335146443aa8ceead7bf043523370c472728f977ef1d5f4_2",
+          "is_ignored": false,
+          "lines": "openai==1.109.1",
+          "message": "Possibly found usage of AI: OpenAI",
+          "metadata": {
+            "category": "maintainability",
+            "confidence": "LOW",
+            "references": [
+              "https://semgrep.dev/blog/2024/detecting-shadow-ai"
+            ],
+            "technology": [
+              "genAI",
+              "LLMs"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/requirements.txt",
+        "start": {
+          "col": 1,
+          "line": 64,
+          "offset": 1206
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.generic.secrets.gitleaks.generic-api-key",
+        "end": {
+          "col": 38,
+          "line": 10,
+          "offset": 239
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "e87247f78d174c4483f5d5aa76437bc66c1fe19f12d7bb643b149ffaa211231646faca8d7bc321a4e3e77b08f31032bc0c5079ee49e87d009c79ecb3aeab633d_0",
+          "is_ignored": false,
+          "lines": "DEV_CLIENT_ID = \"0oaqpmcvbdp9A6o7h2p7\"",
+          "message": "A gitleaks generic-api-key was detected which attempts to identify hard-coded credentials.  It is not recommended to store credentials in source-code, as this risks secrets being leaked  and used by either an internal or external malicious adversary. It is recommended to use  environment variables to securely provide credentials or retrieve credentials from a  secure vault or HSM (Hardware Security Module). This rule can introduce a lot of false positives,  it is not recommended to be used in PR comments.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-798: Use of Hard-coded Credentials"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+            ],
+            "source-rule-url": "https://github.com/zricethezav/gitleaks/tree/master/cmd/generate/config/rules",
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "gitleaks"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/auth/generate_co2_token.py",
+        "start": {
+          "col": 18,
+          "line": 10,
+          "offset": 219
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.generic.secrets.gitleaks.generic-api-key",
+        "end": {
+          "col": 42,
+          "line": 11,
+          "offset": 282
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "ff0620eeadb4ec423554daba6f451c91405a36d70b987830d46afdce4858e897199514679027455515bb864b496c0b308ce24ecbebd7123503a68f56f1897fea_0",
+          "is_ignored": false,
+          "lines": "STAGING_CLIENT_ID = \"0oar1uwrwvhetTIow2p7\"",
+          "message": "A gitleaks generic-api-key was detected which attempts to identify hard-coded credentials.  It is not recommended to store credentials in source-code, as this risks secrets being leaked  and used by either an internal or external malicious adversary. It is recommended to use  environment variables to securely provide credentials or retrieve credentials from a  secure vault or HSM (Hardware Security Module). This rule can introduce a lot of false positives,  it is not recommended to be used in PR comments.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-798: Use of Hard-coded Credentials"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+            ],
+            "source-rule-url": "https://github.com/zricethezav/gitleaks/tree/master/cmd/generate/config/rules",
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "gitleaks"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/auth/generate_co2_token.py",
+        "start": {
+          "col": 22,
+          "line": 11,
+          "offset": 262
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 61,
+          "line": 20,
+          "offset": 647
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "87053b0ee6e7586cfb6f7e449949a5a13933558134f424e1e9e5559da39de29766d088147dc8348396bc2e1865cb36f2a8b2defdc904db34d60de72340b1923e_0",
+          "is_ignored": false,
+          "lines": "    resp = requests.post(url, json=payload, headers=headers)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/auth/generate_co2_token.py",
+        "start": {
+          "col": 12,
+          "line": 20,
+          "offset": 598
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 79,
+          "line": 44,
+          "offset": 1517
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "87053b0ee6e7586cfb6f7e449949a5a13933558134f424e1e9e5559da39de29766d088147dc8348396bc2e1865cb36f2a8b2defdc904db34d60de72340b1923e_1",
+          "is_ignored": false,
+          "lines": "    resp = requests.get(authorize_url, headers=headers, allow_redirects=False)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/auth/generate_co2_token.py",
+        "start": {
+          "col": 12,
+          "line": 44,
+          "offset": 1450
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+        "end": {
+          "col": 30,
+          "line": 82,
+          "offset": 3306
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "4937d82bddb5b61d93086a8bdfecddf6486f1631aaf63003da6ebd316005ea23cb80cac8c32ba260cb43101d66d971c10194e2007403d6f813316c54d7a0ace6_0",
+          "is_ignored": false,
+          "lines": "    cursor.execute(sql_query)",
+          "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql",
+              "https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm",
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "sqlalchemy"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/db_connector.py",
+        "start": {
+          "col": 5,
+          "line": 82,
+          "offset": 3281
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+        "end": {
+          "col": 42,
+          "line": 153,
+          "offset": 6586
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "977e24aa099f4d0b0311d09acc0beb49c48b21844ac74e0a182fcaeaf5f2ce53902d118e67022fa020772a9342a4da7288b04be3245ec21a455dcdfbb8259ef8_0",
+          "is_ignored": false,
+          "lines": "                cursor.execute(sql_query)",
+          "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql",
+              "https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm",
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "sqlalchemy"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/db_connector.py",
+        "start": {
+          "col": 17,
+          "line": 153,
+          "offset": 6561
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+        "end": {
+          "col": 30,
+          "line": 185,
+          "offset": 7762
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "c89566d223c3e082aa38525935ed64597f7a1ecd1f3abc0d3659de2d7ae8f5ed1b5630efd2654135f334967dae12995548fbd2096603177d437aba1d40871950_0",
+          "is_ignored": false,
+          "lines": "    cursor.execute(sql_query)",
+          "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql",
+              "https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm",
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "sqlalchemy"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/db_connector.py",
+        "start": {
+          "col": 5,
+          "line": 185,
+          "offset": 7737
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+        "end": {
+          "col": 34,
+          "line": 206,
+          "offset": 9100
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "c89566d223c3e082aa38525935ed64597f7a1ecd1f3abc0d3659de2d7ae8f5ed1b5630efd2654135f334967dae12995548fbd2096603177d437aba1d40871950_1",
+          "is_ignored": false,
+          "lines": "        cursor.execute(sql_query)",
+          "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql",
+              "https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm",
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "sqlalchemy"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/db_connector.py",
+        "start": {
+          "col": 9,
+          "line": 206,
+          "offset": 9075
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+        "end": {
+          "col": 34,
+          "line": 228,
+          "offset": 9896
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "cd55b3a29a7aa0f5884e39e3ff44ebbf4e0f01585aa3b57315ea059bd17fad1fa7e048b119279437434a079b51ab8139981ce9afc5f6916c8a081ee9c9a8b49f_0",
+          "is_ignored": false,
+          "lines": "        cursor.execute(sql_query)",
+          "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql",
+              "https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm",
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "sqlalchemy"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/db_connector.py",
+        "start": {
+          "col": 9,
+          "line": 228,
+          "offset": 9871
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+        "end": {
+          "col": 30,
+          "line": 449,
+          "offset": 18259
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "32614b7001a1cc05d05da9d4b1a61d9b9f47a6f4f5684c1c224720f4c2bfa265a9aac69cd019b006950fd624ce4cd5207825bb21f2af31c0252d42e1eb14c4cf_0",
+          "is_ignored": false,
+          "lines": "    cursor.execute(sql_query)",
+          "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql",
+              "https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm",
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "sqlalchemy"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/db_connector.py",
+        "start": {
+          "col": 5,
+          "line": 449,
+          "offset": 18234
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+        "end": {
+          "col": 30,
+          "line": 461,
+          "offset": 18645
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "746408c6da0f7b8729a2fc4edfdd2e94a6857bfb11973469d40e0ad6926d3cdf44b862bac73610b2b4a8ce1ae8f8df06d211dc147f3cb1f74c0811a4cd0d421c_0",
+          "is_ignored": false,
+          "lines": "    cursor.execute(sql_query)",
+          "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql",
+              "https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm",
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "sqlalchemy"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/db_connector.py",
+        "start": {
+          "col": 5,
+          "line": 461,
+          "offset": 18620
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+        "end": {
+          "col": 90,
+          "line": 554,
+          "offset": 21454
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "e45709b9d69db1cf8c858aac47ab6c7ebd0063af55e4c4cfc94a59281b8a88847d7e7401bec14f10971b18243ad5d7591c64f88638b133ca968718aca94c0736_0",
+          "is_ignored": false,
+          "lines": "            cursor.execute(sql_query, (user_message, channel_id, message_by, message_ts))",
+          "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql",
+              "https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm",
+              "https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "sqlalchemy"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/db_connector.py",
+        "start": {
+          "col": 13,
+          "line": 554,
+          "offset": 21377
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.generic.secrets.gitleaks.generic-api-key",
+        "end": {
+          "col": 58,
+          "line": 50,
+          "offset": 1900
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "78c3cdfdeac93f5d46a3026d32a1f23eab1e0c33d75c55455fc8ecd4618bc8d9e707c0da0cd3561841df8598d688fb1faefea46af9d88a90cbaf056405bb14fb_0",
+          "is_ignored": false,
+          "lines": "    # Example line: ['10.1.2507.13', { key: '10.1.2507.13', codename: 'Rolo'}],",
+          "message": "A gitleaks generic-api-key was detected which attempts to identify hard-coded credentials.  It is not recommended to store credentials in source-code, as this risks secrets being leaked  and used by either an internal or external malicious adversary. It is recommended to use  environment variables to securely provide credentials or retrieve credentials from a  secure vault or HSM (Hardware Security Module). This rule can introduce a lot of false positives,  it is not recommended to be used in PR comments.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-798: Use of Hard-coded Credentials"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+            ],
+            "source-rule-url": "https://github.com/zricethezav/gitleaks/tree/master/cmd/generate/config/rules",
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "gitleaks"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/co2_stacks.py",
+        "start": {
+          "col": 46,
+          "line": 50,
+          "offset": 1888
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 36,
+          "line": 66,
+          "offset": 2370
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "d5162b5d2a79f560d9075e8abd7c8fc11faabd11e506e5fac99f3e95d2208bfd1ff78cb86e69d7f9ce5de087673344340cc383649a2a71f458cc879db158ca9b_0",
+          "is_ignored": false,
+          "lines": "    with open(versioning_file, \"r\") as file:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/co2_stacks.py",
+        "start": {
+          "col": 10,
+          "line": 66,
+          "offset": 2344
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 76,
+          "line": 126,
+          "offset": 5129
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "92d2f00dbf565140b8d94d024240a20268a0e118369098614596d0ff5540509e2ec314b147d5af056adbbbdb8bc8fbfb8846498b40449869e5085de36266b1a9_0",
+          "is_ignored": false,
+          "lines": "        onboarded_info = open(os.path.join(directory, ONBOARDED_FILE), \"r\")",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/cts_inventory_mr_notifications.py",
+        "start": {
+          "col": 26,
+          "line": 126,
+          "offset": 5079
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 78,
+          "line": 248,
+          "offset": 9701
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "eec339186fde4ebe445e8f87e6f100e352477bda7b2066030dcf5408602c33b9c20a5ac24157733ac7f95850ef6efb2c677704beb324b57269a23d924ff73cac_0",
+          "is_ignored": false,
+          "lines": "        offboarded_info = open(os.path.join(directory, OFFBOARDED_FILE), \"r\")",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/cts_inventory_mr_notifications.py",
+        "start": {
+          "col": 27,
+          "line": 248,
+          "offset": 9650
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.correctness.list-modify-while-iterate",
+        "end": {
+          "col": 30,
+          "line": 258,
+          "offset": 10178
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "cfda5cf1e38b04ea6718191a5319de4426b6361d4dda8afd96bef40e7900af9480a59ee1fdc52b04fabecf1f0fc18dd959c4d1847e977b63a39487af92dcd506_0",
+          "is_ignored": false,
+          "lines": "                for repo in offboarded_repos:\n                    if repo == repository['url']:\n                        repos_and_reasons.append(\n                            {\"url\": repo,\n                                \"reason\": repository['reason']})\n                        offboarded_repos.remove(repo)\n                        break",
+          "message": "It appears that `offboarded_repos` is a list that is being modified while in a for loop. This will likely cause a runtime error or an infinite loop.",
+          "metadata": {
+            "category": "correctness",
+            "references": [
+              "https://unspecified.wordpress.com/2009/02/12/thou-shalt-not-modify-a-list-during-iteration/"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/cts_inventory_mr_notifications.py",
+        "start": {
+          "col": 17,
+          "line": 252,
+          "offset": 9858
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 50,
+          "line": 279,
+          "offset": 10983
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "6de07cffa70a4cc48b82382b4d91336d31cdae9b846aa56c7310d32d8abad89d5c05b6f4390c860207f70d59b640e063c877889aacf22528043ae65ade071527_0",
+          "is_ignored": false,
+          "lines": "                diff_response = requests.get(url)",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/cts_inventory_mr_notifications.py",
+        "start": {
+          "col": 33,
+          "line": 279,
+          "offset": 10966
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 50,
+          "line": 279,
+          "offset": 10983
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "7d9e51720561d3a8b6cb0744ebebbe2398275c259c184d94d9fb86e9a556fb095528b6affb55a155195a95d30b772251b178e3ee77aeac307e1f5a28d74a2c4e_0",
+          "is_ignored": false,
+          "lines": "                diff_response = requests.get(url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/cts_inventory_mr_notifications.py",
+        "start": {
+          "col": 33,
+          "line": 279,
+          "offset": 10966
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 76,
+          "line": 155,
+          "offset": 6459
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "658223328bca25324a67ec6b64d930f3492b302cf7489da18ebc71150ff1c9c01f2f29727651f0d0bcd4a5ef3cc9527c128c65fe4b458e3b23352637dd0062dd_0",
+          "is_ignored": false,
+          "lines": "        onboarded_info = open(os.path.join(directory, ONBOARDED_FILE), \"r\")",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/cts_onboarded_assignee_check.py",
+        "start": {
+          "col": 26,
+          "line": 155,
+          "offset": 6409
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 34,
+          "line": 239,
+          "offset": 9810
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "7224fbf17fd08db6d710c793ed4f43292c19863f4d23639cb368965f173002e5e0037063cfc4711da3b2e7e6f080ad92265ea23efda5a327163520d4931b77a1_0",
+          "is_ignored": false,
+          "lines": "                    time.sleep(5)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/custom_notifications/final_cts_onboarding_notification.py",
+        "start": {
+          "col": 21,
+          "line": 239,
+          "offset": 9797
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 41,
+          "line": 65,
+          "offset": 2435
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "419d0322f0c105b5572d4b60bb694b0d772d11cb487728f87489819fa83cde22cc2a3db001930aa6ab07f0b5cacd83b7da32725ab7717061ffee4e25519dd49c_0",
+          "is_ignored": false,
+          "lines": "    with open(onboarded_repos_file, \"r\") as file:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/custom_notifications/github_cts_notifications.py",
+        "start": {
+          "col": 10,
+          "line": 65,
+          "offset": 2404
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 39,
+          "line": 61,
+          "offset": 2540
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "0454d871e3edb53006636a00273b6287e05fb092ece842c725a6c4dc68b850ef1040c84c0b748a45cf548897a5eca6e2126d6599236ce394a5cb67c8833cb5d7_0",
+          "is_ignored": false,
+          "lines": "    with open(product_areas_file, \"r\") as file:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/custom_notifications/update_product_area.py",
+        "start": {
+          "col": 10,
+          "line": 61,
+          "offset": 2511
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 41,
+          "line": 23,
+          "offset": 903
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "3c827a830b0e71d5ae9ecfa0c2f12edd6f0d7248ebaeb77d7170ec67f3228c77988cadb729372bdcf63f66ab83e774251d8566cdc5d77bdba6ce9fc7ed7af512_0",
+          "is_ignored": false,
+          "lines": "    api_response = requests.get(api_url)",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/failed_srs_jobs_alert.py",
+        "start": {
+          "col": 20,
+          "line": 23,
+          "offset": 882
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 41,
+          "line": 23,
+          "offset": 903
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "ed0f360a7d2339cc346d2b8be1b4558db62d0dbb71bc3e8ccedfc439d64856bd2a377da1223c91e412aee438cc097dd6b23fb0e55ab19e57d19cc886d66e41f6_0",
+          "is_ignored": false,
+          "lines": "    api_response = requests.get(api_url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/failed_srs_jobs_alert.py",
+        "start": {
+          "col": 20,
+          "line": 23,
+          "offset": 882
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 37,
+          "line": 28,
+          "offset": 1070
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "f2c245bd076d13feaf02ac124654bc7029ebde5909e6639f90d35258746303502360bc64410aa928ca4a441b2f6c89f718f0ac2860efd1ff80c9616187e5b3d6_0",
+          "is_ignored": false,
+          "lines": "        response = requests.get(url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/notifications_to_consider_reonboarding.py",
+        "start": {
+          "col": 20,
+          "line": 28,
+          "offset": 1053
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 44,
+          "line": 54,
+          "offset": 2024
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "8d050a818ca404cf526d13c80f605f2e53f07094ab7da06302977823a7f0f1e5c4bb36b2dd953a2becad36851c98c4897269017ccdf4be5f846abed370ac956d_0",
+          "is_ignored": false,
+          "lines": "        with open(offboarded_all_file, \"r\") as file:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/notifications_to_consider_reonboarding.py",
+        "start": {
+          "col": 14,
+          "line": 54,
+          "offset": 1994
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 42,
+          "line": 99,
+          "offset": 2874
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "26931e060f151a14129df4643a12374f51ab9d47bef31011c759dc46385d0073c27c7a4add3de36c391271e9ba79d221d5150c4a5ad0baf1bd43f4d200479034_0",
+          "is_ignored": false,
+          "lines": "    calendar = Calendar(requests.get(url).text)",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/on_call_engineers_notification.py",
+        "start": {
+          "col": 25,
+          "line": 99,
+          "offset": 2857
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 42,
+          "line": 99,
+          "offset": 2874
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "e194469892bfa5b524a66539437dfef89d384e761d46e034a4b6b3d8d3caf9fcd4648d791de2b45d6d22b0293121c441d118e4225368785f29d8c56a295e0441_0",
+          "is_ignored": false,
+          "lines": "    calendar = Calendar(requests.get(url).text)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/on_call_engineers_notification.py",
+        "start": {
+          "col": 25,
+          "line": 99,
+          "offset": 2857
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 46,
+          "line": 20,
+          "offset": 702
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "804db218ffb27b87315086aa44feee06bcb2a6a85cb73f49164cd8e882e03a02a94cd06f6b3032b44d45cda35cd2c21f84a36c0147ef7d7199ded0cf5569824c_0",
+          "is_ignored": false,
+          "lines": "    with open('security_champions.yaml', 'r') as file:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/security_champion_report.py",
+        "start": {
+          "col": 10,
+          "line": 20,
+          "offset": 666
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 41,
+          "line": 13,
+          "offset": 368
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "31040f0e3ddabdb134b1cc687e8722b7112dcf01c3cec4c1aeab5b6a808e7aa770e142c38ffcde1ca7bb20362412246646d1eb65932142d6e7a407149baff479_0",
+          "is_ignored": false,
+          "lines": "    api_response = requests.get(api_url)",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/srs_no_recent_activity_alert.py",
+        "start": {
+          "col": 20,
+          "line": 13,
+          "offset": 347
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 41,
+          "line": 13,
+          "offset": 368
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "dd8609444bd5ef29d43847dc9dd717f19e1b4a820971826e832e757f80e03cef8c0f00f1d40ae7fea97bd1b974166c3cc712a54968ca7424665b8bacb373109a_0",
+          "is_ignored": false,
+          "lines": "    api_response = requests.get(api_url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/features/srs_no_recent_activity_alert.py",
+        "start": {
+          "col": 20,
+          "line": 13,
+          "offset": 347
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 37,
+          "line": 29,
+          "offset": 749
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "84eeb7e5ff2973772565153bfdc52e106d7fa4d8844e8bbb29eb8d860e9203a7d42fa072bb24554fb4a5043304ca22edaf0f95c84c727695a5b05e4cd4d09367_0",
+          "is_ignored": false,
+          "lines": "        response = requests.get(url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/gitlab_connector.py",
+        "start": {
+          "col": 20,
+          "line": 29,
+          "offset": 732
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 37,
+          "line": 50,
+          "offset": 1410
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "84eeb7e5ff2973772565153bfdc52e106d7fa4d8844e8bbb29eb8d860e9203a7d42fa072bb24554fb4a5043304ca22edaf0f95c84c727695a5b05e4cd4d09367_1",
+          "is_ignored": false,
+          "lines": "        response = requests.get(url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/gitlab_connector.py",
+        "start": {
+          "col": 20,
+          "line": 50,
+          "offset": 1393
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 41,
+          "line": 65,
+          "offset": 1900
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "84eeb7e5ff2973772565153bfdc52e106d7fa4d8844e8bbb29eb8d860e9203a7d42fa072bb24554fb4a5043304ca22edaf0f95c84c727695a5b05e4cd4d09367_2",
+          "is_ignored": false,
+          "lines": "        response = requests.get(zip_url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/gitlab_connector.py",
+        "start": {
+          "col": 20,
+          "line": 65,
+          "offset": 1879
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 42,
+          "line": 95,
+          "offset": 2991
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "84eeb7e5ff2973772565153bfdc52e106d7fa4d8844e8bbb29eb8d860e9203a7d42fa072bb24554fb4a5043304ca22edaf0f95c84c727695a5b05e4cd4d09367_3",
+          "is_ignored": false,
+          "lines": "        response = requests.get(repo_url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/gitlab_connector.py",
+        "start": {
+          "col": 20,
+          "line": 95,
+          "offset": 2969
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 44,
+          "line": 121,
+          "offset": 4103
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "84eeb7e5ff2973772565153bfdc52e106d7fa4d8844e8bbb29eb8d860e9203a7d42fa072bb24554fb4a5043304ca22edaf0f95c84c727695a5b05e4cd4d09367_4",
+          "is_ignored": false,
+          "lines": "        response = requests.get(object_url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/gitlab_connector.py",
+        "start": {
+          "col": 20,
+          "line": 121,
+          "offset": 4079
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 10,
+          "line": 32,
+          "offset": 768
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "6d8a7da69e6c7c775b974e5a0eff16c25fed970d13468cc42bfe104c3a0e5db8a7e2358e59ccaeab9cf85082f5817aaf7b15130f22fd80f41f12783f1be7b995_0",
+          "is_ignored": false,
+          "lines": "        response = requests.request(\n            \"GET\",\n            config.JIRA_API_URL + '/search/jql',\n            headers=headers,\n            params=query,\n            auth=jira_auth\n        )",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 20,
+          "line": 26,
+          "offset": 591
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 6,
+          "line": 253,
+          "offset": 8183
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "49fbd01b4b81fcc30adaa642764bb298b44d5fe5e7548817148e4788600d947994925597533018615b957ca2937ac79dc505b7176436d8f8f982f66837fef74b_0",
+          "is_ignored": false,
+          "lines": "    response = requests.request(\n        \"GET\",\n        config.JIRA_API_URL + '/user/search',\n        headers=headers,\n        params=query,\n        auth=jira_auth\n    )",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 16,
+          "line": 247,
+          "offset": 8029
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 6,
+          "line": 253,
+          "offset": 8183
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "6d8a7da69e6c7c775b974e5a0eff16c25fed970d13468cc42bfe104c3a0e5db8a7e2358e59ccaeab9cf85082f5817aaf7b15130f22fd80f41f12783f1be7b995_1",
+          "is_ignored": false,
+          "lines": "    response = requests.request(\n        \"GET\",\n        config.JIRA_API_URL + '/user/search',\n        headers=headers,\n        params=query,\n        auth=jira_auth\n    )",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 16,
+          "line": 247,
+          "offset": 8029
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 6,
+          "line": 299,
+          "offset": 9347
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "49fbd01b4b81fcc30adaa642764bb298b44d5fe5e7548817148e4788600d947994925597533018615b957ca2937ac79dc505b7176436d8f8f982f66837fef74b_1",
+          "is_ignored": false,
+          "lines": "    response = requests.request(\n        \"GET\",\n        config.JIRA_API_URL + '/user',\n        headers=headers,\n        params=query,\n        auth=jira_auth\n    )",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 16,
+          "line": 293,
+          "offset": 9200
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 6,
+          "line": 299,
+          "offset": 9347
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "6d8a7da69e6c7c775b974e5a0eff16c25fed970d13468cc42bfe104c3a0e5db8a7e2358e59ccaeab9cf85082f5817aaf7b15130f22fd80f41f12783f1be7b995_2",
+          "is_ignored": false,
+          "lines": "    response = requests.request(\n        \"GET\",\n        config.JIRA_API_URL + '/user',\n        headers=headers,\n        params=query,\n        auth=jira_auth\n    )",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 16,
+          "line": 293,
+          "offset": 9200
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 10,
+          "line": 334,
+          "offset": 10269
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "49fbd01b4b81fcc30adaa642764bb298b44d5fe5e7548817148e4788600d947994925597533018615b957ca2937ac79dc505b7176436d8f8f982f66837fef74b_2",
+          "is_ignored": false,
+          "lines": "        response = requests.request(\n            \"GET\",\n            config.JIRA_API_URL + endpoint,\n            headers=headers,\n            auth=jira_auth\n        ).json()",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 20,
+          "line": 329,
+          "offset": 10123
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 10,
+          "line": 334,
+          "offset": 10269
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "6d8a7da69e6c7c775b974e5a0eff16c25fed970d13468cc42bfe104c3a0e5db8a7e2358e59ccaeab9cf85082f5817aaf7b15130f22fd80f41f12783f1be7b995_3",
+          "is_ignored": false,
+          "lines": "        response = requests.request(\n            \"GET\",\n            config.JIRA_API_URL + endpoint,\n            headers=headers,\n            auth=jira_auth\n        ).json()",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 20,
+          "line": 329,
+          "offset": 10123
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 10,
+          "line": 588,
+          "offset": 18775
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "49fbd01b4b81fcc30adaa642764bb298b44d5fe5e7548817148e4788600d947994925597533018615b957ca2937ac79dc505b7176436d8f8f982f66837fef74b_3",
+          "is_ignored": false,
+          "lines": "        response = requests.request(\n            \"POST\",\n            config.JIRA_API_URL + \"/bulk/issues/fields\",\n            data=payload,\n            headers=headers,\n            auth=jira_auth\n        )",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 20,
+          "line": 582,
+          "offset": 18589
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 10,
+          "line": 588,
+          "offset": 18775
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "6d8a7da69e6c7c775b974e5a0eff16c25fed970d13468cc42bfe104c3a0e5db8a7e2358e59ccaeab9cf85082f5817aaf7b15130f22fd80f41f12783f1be7b995_4",
+          "is_ignored": false,
+          "lines": "        response = requests.request(\n            \"POST\",\n            config.JIRA_API_URL + \"/bulk/issues/fields\",\n            data=payload,\n            headers=headers,\n            auth=jira_auth\n        )",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/jira_connector.py",
+        "start": {
+          "col": 20,
+          "line": 582,
+          "offset": 18589
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 52,
+          "line": 156,
+          "offset": 4908
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "f87d8c12d5a6f39970977875b88ac276cabb47bee086bb09975add973bdcaa29158ed6a735b5513a3077fb414352e22f44c2f400f24f54b9b2286cefc752bc5e_0",
+          "is_ignored": false,
+          "lines": "    token_response = requests.request(\n        \"POST\", url, headers=headers, data=payload)",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/qa_chatbot.py",
+        "start": {
+          "col": 22,
+          "line": 155,
+          "offset": 4839
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 52,
+          "line": 156,
+          "offset": 4908
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "0c5a1d98a8853e5fae1bbe9440191202e14f731713102db9b8b92c0a6f556ded4091b5ca41334651e788c59c03b5257f99dbd9b5e391d40d555ea812bce21e6f_0",
+          "is_ignored": false,
+          "lines": "    token_response = requests.request(\n        \"POST\", url, headers=headers, data=payload)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/qa_chatbot.py",
+        "start": {
+          "col": 22,
+          "line": 155,
+          "offset": 4839
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-raise-for-status",
+        "end": {
+          "col": 60,
+          "line": 29,
+          "offset": 619
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "055bb1a3171c2c1ab00d4d7cbc06e60c294f8fcf0e8736f8a863ec3da4ead264ff2ec8e64178b603c95456064de0ee44d9e3c1b363113d473542d89038452759_0",
+          "is_ignored": false,
+          "lines": "            response = requests.head(\n                url, timeout=timeout, allow_redirects=True)",
+          "message": "There's an HTTP request made with requests, but the raise_for_status() utility method isn't used. This can result in request errors going unnoticed and your code behaving in unexpected ways, such as if your authorization API returns a 500 error while you're only checking for a 401.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://requests.readthedocs.io/en/master/api/#requests.Response.raise_for_status"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/artifactory_util.py",
+        "start": {
+          "col": 24,
+          "line": 28,
+          "offset": 545
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.dangerous-subprocess-use-audit",
+        "end": {
+          "col": 21,
+          "line": 124,
+          "offset": 3909
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "96e93870047267b85ecd49dd36cc7cd197e0ebe693ff4c2dcfa90340a7a1ca582d485c08be788a02df0c752de8cb4866557f41b4016c0b5906be64f93aa8325c_0",
+          "is_ignored": false,
+          "lines": "        result = subprocess.run(\n            f'scorecard --repo={url} --format=json'.split(),\n            capture_output=True,\n            text=True,\n            env=env)",
+          "message": "Detected subprocess function 'run' without a static string. If this data can be controlled by a malicious actor, it may be an instance of command injection. Audit the use of this call to ensure it is not controllable by an external resource. You may consider using 'shlex.escape()'.",
+          "metadata": {
+            "asvs": {
+              "control_id": "5.3.8 OS Command Injection",
+              "control_url": "https://github.com/OWASP/ASVS/blob/master/4.0/en/0x13-V5-Validation-Sanitization-Encoding.md#v53-output-encoding-and-injection-prevention-requirements",
+              "section": "V5: Validation, Sanitization and Encoding Verification Requirements",
+              "version": "4"
+            },
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "HIGH",
+            "likelihood": "LOW",
+            "owasp": [
+              "A01:2017 - Injection",
+              "A03:2021 - Injection"
+            ],
+            "references": [
+              "https://stackoverflow.com/questions/3172470/actual-meaning-of-shell-true-in-subprocess",
+              "https://docs.python.org/3/library/subprocess.html",
+              "https://docs.python.org/3/library/shlex.html",
+              "https://semgrep.dev/docs/cheat-sheets/python-command-injection/"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/artifactory_util.py",
+        "start": {
+          "col": 18,
+          "line": 120,
+          "offset": 3756
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 73,
+          "line": 193,
+          "offset": 5830
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "ea98c8e91e28194e97f6db58fca2475711eaf1258cb73c79fe6f38e2e90b7c1e5e0f313c9b56d459b4acf770e7869e50bdd8462de0310e1a5a2c3864aad83fe3_0",
+          "is_ignored": false,
+          "lines": "            response = requests.post(url, headers=headers, data=payload)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/artifactory_util.py",
+        "start": {
+          "col": 24,
+          "line": 193,
+          "offset": 5781
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 66,
+          "line": 30,
+          "offset": 766
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_0",
+          "is_ignored": false,
+          "lines": "                conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 24,
+          "line": 30,
+          "offset": 724
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 34,
+          "line": 41,
+          "offset": 1240
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "3a0e7db2442a4d8f930f2d403d497f02740272b58a284713c525a2ef31529718d7ecae29324aa2f14f18e8bbe53c59949ddc7fe72e0ed033f5ec079687606666_0",
+          "is_ignored": false,
+          "lines": "                    time.sleep(1)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 21,
+          "line": 41,
+          "offset": 1227
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 26,
+          "line": 71,
+          "offset": 2133
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "3a0e7db2442a4d8f930f2d403d497f02740272b58a284713c525a2ef31529718d7ecae29324aa2f14f18e8bbe53c59949ddc7fe72e0ed033f5ec079687606666_1",
+          "is_ignored": false,
+          "lines": "            time.sleep(1)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 71,
+          "offset": 2120
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 92,
+          "offset": 2728
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_1",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 92,
+          "offset": 2686
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 104,
+          "offset": 3192
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "3a0e7db2442a4d8f930f2d403d497f02740272b58a284713c525a2ef31529718d7ecae29324aa2f14f18e8bbe53c59949ddc7fe72e0ed033f5ec079687606666_2",
+          "is_ignored": false,
+          "lines": "                time.sleep(1)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 17,
+          "line": 104,
+          "offset": 3179
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 26,
+          "line": 111,
+          "offset": 3407
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "3a0e7db2442a4d8f930f2d403d497f02740272b58a284713c525a2ef31529718d7ecae29324aa2f14f18e8bbe53c59949ddc7fe72e0ed033f5ec079687606666_3",
+          "is_ignored": false,
+          "lines": "            time.sleep(1)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 111,
+          "offset": 3394
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 157,
+          "offset": 5070
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_2",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 157,
+          "offset": 5028
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 183,
+          "offset": 6215
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "3a0e7db2442a4d8f930f2d403d497f02740272b58a284713c525a2ef31529718d7ecae29324aa2f14f18e8bbe53c59949ddc7fe72e0ed033f5ec079687606666_4",
+          "is_ignored": false,
+          "lines": "                time.sleep(1)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 17,
+          "line": 183,
+          "offset": 6202
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 26,
+          "line": 190,
+          "offset": 6426
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "3a0e7db2442a4d8f930f2d403d497f02740272b58a284713c525a2ef31529718d7ecae29324aa2f14f18e8bbe53c59949ddc7fe72e0ed033f5ec079687606666_5",
+          "is_ignored": false,
+          "lines": "            time.sleep(1)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 190,
+          "offset": 6413
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 453,
+          "offset": 16614
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_3",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 453,
+          "offset": 16572
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 489,
+          "offset": 17846
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "a3d8ab1d8a97455516c009c638dba2497f5e28aeac310cc6aa6f007688f68ac13ae50b59451595ffb0e6b7d10c04aea823f55bf235959ea08dad30391d1415c0_0",
+          "is_ignored": false,
+          "lines": "            time.sleep(delay)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 489,
+          "offset": 17829
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 532,
+          "offset": 18807
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_4",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 532,
+          "offset": 18765
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 561,
+          "offset": 19809
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "a3d8ab1d8a97455516c009c638dba2497f5e28aeac310cc6aa6f007688f68ac13ae50b59451595ffb0e6b7d10c04aea823f55bf235959ea08dad30391d1415c0_1",
+          "is_ignored": false,
+          "lines": "            time.sleep(delay)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 561,
+          "offset": 19792
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 576,
+          "offset": 20223
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_5",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 576,
+          "offset": 20181
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 618,
+          "offset": 21730
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "a3d8ab1d8a97455516c009c638dba2497f5e28aeac310cc6aa6f007688f68ac13ae50b59451595ffb0e6b7d10c04aea823f55bf235959ea08dad30391d1415c0_2",
+          "is_ignored": false,
+          "lines": "            time.sleep(delay)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 618,
+          "offset": 21713
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 638,
+          "offset": 22229
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_6",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 638,
+          "offset": 22187
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 37,
+          "line": 647,
+          "offset": 22589
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "5dced2336af85de7903eacad45e88898fa92ef81a5b9bf265236fe2032e3eb32073297b773f385c8984eebb1e844ccbc744bfa3d5f489c1f4c244cca8ad280c6_0",
+          "is_ignored": false,
+          "lines": "                time.sleep(interval)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 17,
+          "line": 647,
+          "offset": 22569
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 33,
+          "line": 658,
+          "offset": 22899
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "5dced2336af85de7903eacad45e88898fa92ef81a5b9bf265236fe2032e3eb32073297b773f385c8984eebb1e844ccbc744bfa3d5f489c1f4c244cca8ad280c6_1",
+          "is_ignored": false,
+          "lines": "            time.sleep(interval)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 658,
+          "offset": 22879
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 33,
+          "line": 662,
+          "offset": 23067
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "5dced2336af85de7903eacad45e88898fa92ef81a5b9bf265236fe2032e3eb32073297b773f385c8984eebb1e844ccbc744bfa3d5f489c1f4c244cca8ad280c6_2",
+          "is_ignored": false,
+          "lines": "            time.sleep(interval)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 662,
+          "offset": 23047
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 684,
+          "offset": 23657
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_7",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 684,
+          "offset": 23615
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 719,
+          "offset": 24989
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "a3d8ab1d8a97455516c009c638dba2497f5e28aeac310cc6aa6f007688f68ac13ae50b59451595ffb0e6b7d10c04aea823f55bf235959ea08dad30391d1415c0_3",
+          "is_ignored": false,
+          "lines": "            time.sleep(delay)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 719,
+          "offset": 24972
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 740,
+          "offset": 25542
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_8",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 740,
+          "offset": 25500
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 759,
+          "offset": 26276
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "a3d8ab1d8a97455516c009c638dba2497f5e28aeac310cc6aa6f007688f68ac13ae50b59451595ffb0e6b7d10c04aea823f55bf235959ea08dad30391d1415c0_4",
+          "is_ignored": false,
+          "lines": "            time.sleep(delay)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 759,
+          "offset": 26259
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 785,
+          "offset": 27027
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_9",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 785,
+          "offset": 26985
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 807,
+          "offset": 27899
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "a3d8ab1d8a97455516c009c638dba2497f5e28aeac310cc6aa6f007688f68ac13ae50b59451595ffb0e6b7d10c04aea823f55bf235959ea08dad30391d1415c0_5",
+          "is_ignored": false,
+          "lines": "            time.sleep(delay)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 807,
+          "offset": 27882
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.httpsconnection-detected",
+        "end": {
+          "col": 62,
+          "line": 830,
+          "offset": 28518
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "9443d5920774e015c0181588c0c09aff0e24bc6139754f21d323cc8186663d6b474df3e8e0b731730b786d605039bf069ffda5b645724d874ae6b4240447cef1_10",
+          "is_ignored": false,
+          "lines": "            conn = http.client.HTTPSConnection(c.GITLAB_HOST)",
+          "message": "The HTTPSConnection API has changed frequently with minor releases of Python. Ensure you are using the API for your version of Python securely. For example, Python 3 versions prior to 3.4.3 will not verify SSL certificates by default. See https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection for more information.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-295: Improper Certificate Validation"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/http.client.html#http.client.HTTPSConnection"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 20,
+          "line": 830,
+          "offset": 28476
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 30,
+          "line": 854,
+          "offset": 29487
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "a3d8ab1d8a97455516c009c638dba2497f5e28aeac310cc6aa6f007688f68ac13ae50b59451595ffb0e6b7d10c04aea823f55bf235959ea08dad30391d1415c0_6",
+          "is_ignored": false,
+          "lines": "            time.sleep(delay)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 13,
+          "line": 854,
+          "offset": 29470
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 18,
+          "line": 929,
+          "offset": 32302
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "80a0d97aeeb35fba9e28a05a651c46c33c4cd0af805b43c96cefde2dd9b24d9182f8ac941c58f21bb6d979193718227e3855dae917fab30e03ff955cb9b4bd85_0",
+          "is_ignored": false,
+          "lines": "    time.sleep(5)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/auto_merge.py",
+        "start": {
+          "col": 5,
+          "line": 929,
+          "offset": 32289
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 65,
+          "line": 35,
+          "offset": 948
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "635d142c935c34f1d6eb3f0210dd3f54c32ffe4449133c1b32760212a7849cb048cd7a45cbe474736b89ba6850db8c5be5cd66a176fbe271d5a7d5f77cc2d1f6_0",
+          "is_ignored": false,
+          "lines": "        response = requests.request(\"GET\", url, headers=headers)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/remote_mirror.py",
+        "start": {
+          "col": 20,
+          "line": 35,
+          "offset": 903
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 42,
+          "line": 711,
+          "offset": 27698
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "4dcd5af320515ac36d750aba1d70e560a80e5fdeadcab06d092ae24ed26ad369c88fb32c9c97d6f151cd1abd85372a5d5d8e73db9ceb0130f2e86b6aab5ade75_0",
+          "is_ignored": false,
+          "lines": "        with open(c.QUEUE_FILE_PATH, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/remote_mirror.py",
+        "start": {
+          "col": 14,
+          "line": 711,
+          "offset": 27670
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 38,
+          "line": 728,
+          "offset": 28260
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "e6b81de3b37284bf15a0cad0522951d43aeec7a6b12b9d9337a63386d933ff730b75bc463f83aa2210dc0b036b9652bc9e1570f6917f393d94380882158d137e_0",
+          "is_ignored": false,
+          "lines": "    with open(c.QUEUE_FILE_PATH, \"w\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/live_app/commands/remote_mirror_helper_modules/remote_mirror.py",
+        "start": {
+          "col": 10,
+          "line": 728,
+          "offset": 28232
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 29,
+          "line": 113,
+          "offset": 4671
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "f87d510f32d109dbeaf2dc5326800246be14d5d5cbcb35f90822af172eec932657dcf7237165a19430a605b28b1e5f1b1b52edb1ac56d773e05727ecde50ad62_0",
+          "is_ignored": false,
+          "lines": "  with open(jira_repos, 'r') as file:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/main.py",
+        "start": {
+          "col": 8,
+          "line": 113,
+          "offset": 4650
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.requests.best-practice.use-timeout",
+        "end": {
+          "col": 37,
+          "line": 134,
+          "offset": 4617
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "4473c7698fcffb0bddf563a74c63499d28eb9e26ffacd1a632f492b90cab6d99a37e279fdfe7ab703a2b30637fe832b8d0ccc7ee3d4af25c60e603a58a6776bb_0",
+          "is_ignored": false,
+          "lines": "    response = requests.get(zip_url)",
+          "message": "Detected a 'requests' call without a timeout set. By default, 'requests' calls wait until the connection is closed. This means a 'requests' call without a timeout will hang the program if a response is never received. Consider setting a timeout for all 'requests'.",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://docs.python-requests.org/en/latest/user/advanced/?highlight=timeout#timeouts",
+              "https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts"
+            ],
+            "technology": [
+              "requests"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/misc.py",
+        "start": {
+          "col": 16,
+          "line": 134,
+          "offset": 4596
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.deserialization.avoid-pickle",
+        "end": {
+          "col": 38,
+          "line": 238,
+          "offset": 7890
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "390ca8f14599a771da2af5a46e57f729944c13e362ec9c4d6a0d5fc50533a7debd70177f9dfb7e61c13428a1897ee0938530d57f1df7d4bb8af412f32d54d5da_0",
+          "is_ignored": false,
+          "lines": "                return pickle.load(f)",
+          "message": "Avoid using `pickle`, which is known to lead to code execution vulnerabilities. When unpickling, the serialized data could be manipulated to run arbitrary code. Instead, consider serializing the relevant data as JSON or a similar text-based serialization format.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-502: Deserialization of Untrusted Data"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A08:2017 - Insecure Deserialization",
+              "A08:2021 - Software and Data Integrity Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/pickle.html"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/misc.py",
+        "start": {
+          "col": 24,
+          "line": 238,
+          "offset": 7876
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.deserialization.avoid-pickle",
+        "end": {
+          "col": 37,
+          "line": 242,
+          "offset": 8017
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "16ec521adb55793774d940a699fc130c2db38dca15067eaf07e5beb7ce662a2f7b060526d4b17fec5456fb4b9c06c7dc115a2416b92696e1f3d29bdd4ed49ee2_0",
+          "is_ignored": false,
+          "lines": "                pickle.dump(data, f)",
+          "message": "Avoid using `pickle`, which is known to lead to code execution vulnerabilities. When unpickling, the serialized data could be manipulated to run arbitrary code. Instead, consider serializing the relevant data as JSON or a similar text-based serialization format.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-502: Deserialization of Untrusted Data"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A08:2017 - Insecure Deserialization",
+              "A08:2021 - Software and Data Integrity Failures"
+            ],
+            "references": [
+              "https://docs.python.org/3/library/pickle.html"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/misc.py",
+        "start": {
+          "col": 17,
+          "line": 242,
+          "offset": 7997
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 35,
+          "line": 16,
+          "offset": 457
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "0fc4fb3069c09e207782a39535c4b93cd6860974e459360d26208be7b87cdc514dcbeaa2b138f596af5fcf5bfbf5b2d0a04f280882ba68869fe920bed3e17c7a_0",
+          "is_ignored": false,
+          "lines": "    f = open(\"messages.log\", \"r+\")",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/skynet_logger.py",
+        "start": {
+          "col": 9,
+          "line": 16,
+          "offset": 431
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.security.audit.dynamic-urllib-use-detected",
+        "end": {
+          "col": 45,
+          "line": 80,
+          "offset": 2489
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "d5ab159cbbb96d6e4d67bc7bf0a386595057c7506f15ee6e623b4ea74bf41016e93223839b129abe5919775741c116e592f752a36496127207b3cf66029c3a8e_0",
+          "is_ignored": false,
+          "lines": "            with urllib.request.urlopen(req):",
+          "message": "Detected a dynamic value being used with urllib. urllib supports 'file://' schemes, so a dynamic value controlled by a malicious actor may allow them to read arbitrary files. Audit uses of urllib calls to ensure user data cannot control the URLs, or consider using the 'requests' library instead.",
+          "metadata": {
+            "asvs": {
+              "control_id": "5.2.4 Dynamic Code Execution Features",
+              "control_url": "https://github.com/OWASP/ASVS/blob/master/4.0/en/0x13-V5-Validation-Sanitization-Encoding.md#v52-sanitization-and-sandboxing-requirements",
+              "section": "V5: Validation, Sanitization and Encoding Verification Requirements",
+              "version": "4"
+            },
+            "bandit-code": "B310",
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-939: Improper Authorization in Handler for Custom URL Scheme"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": "A01:2017 - Injection",
+            "references": [
+              "https://cwe.mitre.org/data/definitions/939.html"
+            ],
+            "source-rule-url": "https://github.com/PyCQA/bandit/blob/b1411bfb43795d3ffd268bef17a839dee954c2b1/bandit/blacklists/calls.py#L163",
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/skynet_logger.py",
+        "start": {
+          "col": 18,
+          "line": 80,
+          "offset": 2462
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.arbitrary-sleep",
+        "end": {
+          "col": 22,
+          "line": 59,
+          "offset": 1949
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "0c2569d14ff74a93ffaaf04b4e63b29db0925807aa174bd98d316f5be12ab4d737fe05534bcb7727baaca03be4ab56cd702163285660a7cf69f53cfc95694c39_0",
+          "is_ignored": false,
+          "lines": "        time.sleep(5)",
+          "message": "time.sleep() call; did you mean to leave this in?",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/scripts/users_list.py",
+        "start": {
+          "col": 9,
+          "line": 59,
+          "offset": 1936
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.terraform.aws.best-practice.aws-s3-bucket-versioning-not-enabled",
+        "end": {
+          "col": 2,
+          "line": 9,
+          "offset": 205
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "b5dfd6d1d0ec81233799b367ba1e98f4bc04f958f74de58f9fb82f9fce607f9d975fedf16a0ab22ff8acde787642ee4c5552a9a0b1cb76113330c259e4e17eed_0",
+          "is_ignored": false,
+          "lines": "resource \"aws_s3_bucket\" \"benderbot-bucket\" {\n  bucket = \"benderbot-state-backend\"\n  \n  tags = {\n    splunkit_data_classification = \"private\",\n    splunkit_environment_type = \"prd\"\n  }\n}",
+          "message": "Ensure that Amazon S3 bucket versioning is not enabled. Consider using versioning if you don't have alternative backup mechanism.",
+          "metadata": {
+            "category": "best-practice",
+            "technology": [
+              "terraform",
+              "aws"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/terraform/backend.tf",
+        "start": {
+          "col": 1,
+          "line": 2,
+          "offset": 19
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.terraform.aws.security.aws-dynamodb-point-in-time-recovery-disabled",
+        "end": {
+          "col": 2,
+          "line": 41,
+          "offset": 966
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "8a7fdde7382ebab67520529705f22aba70267b0b1cb1294260d0d1ec2e8dc8d8de4af93ea3dc2103552b5f5930881deec48ba51c38a4cc9dac4c8a603a593471_0",
+          "is_ignored": false,
+          "lines": "resource \"aws_dynamodb_table\" \"benderbot-statelock\" {\n    name = \"benderbot-state-lock\"\n    billing_mode = \"PAY_PER_REQUEST\"\n    hash_key = \"LockID\"\n    attribute {\n        name = \"LockID\"\n        type = \"S\"\n    }\n    \n    tags = {\n        splunkit_data_classification = \"private\",\n        splunkit_environment_type = \"prd\"\n    }\n}",
+          "message": "Point-in-time recovery is not enabled for the DynamoDB table. DynamoDB tables should be protected against accidental or malicious write/delete actions. By enabling point-in-time-recovery you can restore to a known point in the event of loss of data.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-221: Information Loss or Omission"
+            ],
+            "impact": "LOW",
+            "likelihood": "LOW",
+            "owasp": [
+              "A09:2021 – Security Logging and Monitoring Failures"
+            ],
+            "references": [
+              "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/dynamodb_table#point_in_time_recovery"
+            ],
+            "subcategory": [
+              "audit"
+            ],
+            "technology": [
+              "terraform",
+              "aws"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/terraform/backend.tf",
+        "start": {
+          "col": 1,
+          "line": 28,
+          "offset": 635
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.terraform.aws.security.aws-dynamodb-table-unencrypted",
+        "end": {
+          "col": 2,
+          "line": 41,
+          "offset": 966
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "b1349bed82fa06a53d0968e307d31e240fe0360b10dfdd49ba56cbdda5ac5aeb3ba5bc6a106fa3519a353a65de6aca05cfa0a0ff9e2bc83c1524e6e1d13497b4_0",
+          "is_ignored": false,
+          "lines": "resource \"aws_dynamodb_table\" \"benderbot-statelock\" {\n    name = \"benderbot-state-lock\"\n    billing_mode = \"PAY_PER_REQUEST\"\n    hash_key = \"LockID\"\n    attribute {\n        name = \"LockID\"\n        type = \"S\"\n    }\n    \n    tags = {\n        splunkit_data_classification = \"private\",\n        splunkit_environment_type = \"prd\"\n    }\n}",
+          "message": "By default, AWS DynamoDB Table is encrypted using AWS-managed keys. However, for added security, it's recommended to configure your own AWS KMS encryption key to protect your data in the DynamoDB table. You can either create a new aws_kms_key resource or use the ARN of an existing key in your AWS account to do so.",
+          "metadata": {
+            "category": "security",
+            "confidence": "MEDIUM",
+            "cwe": [
+              "CWE-326: Inadequate Encryption Strength"
+            ],
+            "impact": "MEDIUM",
+            "likelihood": "MEDIUM",
+            "owasp": [
+              "A03:2017 - Sensitive Data Exposure",
+              "A02:2021 - Cryptographic Failures"
+            ],
+            "references": [
+              "https://owasp.org/Top10/A02_2021-Cryptographic_Failures"
+            ],
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "aws",
+              "terraform"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/terraform/backend.tf",
+        "start": {
+          "col": 1,
+          "line": 28,
+          "offset": 635
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.terraform.lang.security.ec2-imdsv1-optional",
+        "end": {
+          "col": 2,
+          "line": 43,
+          "offset": 1055
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "d8f23ab0fdd5d3937b668f542e09980db217ea2461f5ab90a68b61b7aab2450f0323ef246b9aeeec44b0683f31191ecc9420a01af60abf67f641e4cf4865dd67_0",
+          "is_ignored": false,
+          "lines": "resource \"aws_instance\" \"benderbot-live\" {\n    ami = local.machine_image\n    instance_type = local.prod_instance_type\n    subnet_id = local.subnet\n    vpc_security_group_ids = [local.security_group]\n    disable_api_stop = true\n    disable_api_termination = true\n    key_name = \"benderbot_key\"\n\n    tags = {\n        Name = \"BenderBot\",\n        splunkit_data_classification = \"private\",\n        splunkit_environment_type = \"prd\"\n    } \n}",
+          "message": "AWS EC2 Instance allowing use of the IMDSv1",
+          "metadata": {
+            "category": "security",
+            "confidence": "MEDIUM",
+            "cwe": [
+              "CWE-918: Server-Side Request Forgery (SSRF)"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A10:2021 - Server-Side Request Forgery (SSRF)"
+            ],
+            "references": [
+              "https://aws.amazon.com/blogs/security/defense-in-depth-open-firewalls-reverse-proxies-ssrf-vulnerabilities-ec2-instance-metadata-service",
+              "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance#metadata-options"
+            ],
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "terraform",
+              "aws"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/terraform/main.tf",
+        "start": {
+          "col": 1,
+          "line": 29,
+          "offset": 620
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.terraform.lang.security.ec2-imdsv1-optional",
+        "end": {
+          "col": 2,
+          "line": 13,
+          "offset": 386
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "58f8ad7cee3fb9e8d9e04895f6ab2732521a4a010fb1207463fc7b39be2e56ef55e93329ab5424ede1977bc14eba6d13cd85f1c01bc42a827d5d7ef9d6bb2b5d_0",
+          "is_ignored": false,
+          "lines": "resource \"aws_instance\" \"benderbot-live-test\" {\n    ami = local.machine_image\n    instance_type = local.test_instance_type\n    subnet_id = local.subnet\n    vpc_security_group_ids = [local.security_group]\n    key_name = \"benderbot_key\"\n\n    tags = {\n        Name = \"BenderBot Test\",\n        splunkit_data_classification = \"private\",\n        splunkit_environment_type = \"non-prd\"\n    } \n}",
+          "message": "AWS EC2 Instance allowing use of the IMDSv1",
+          "metadata": {
+            "category": "security",
+            "confidence": "MEDIUM",
+            "cwe": [
+              "CWE-918: Server-Side Request Forgery (SSRF)"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A10:2021 - Server-Side Request Forgery (SSRF)"
+            ],
+            "references": [
+              "https://aws.amazon.com/blogs/security/defense-in-depth-open-firewalls-reverse-proxies-ssrf-vulnerabilities-ec2-instance-metadata-service",
+              "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance#metadata-options"
+            ],
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "terraform",
+              "aws"
+            ]
+          },
+          "severity": "ERROR",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/terraform/test_instance.tf",
+        "start": {
+          "col": 1,
+          "line": 1,
+          "offset": 0
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.generic.secrets.gitleaks.generic-api-key",
+        "end": {
+          "col": 54,
+          "line": 15,
+          "offset": 396
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "644050a606dc4fa176101104dc8a293b7e9a9c32effbda02bcdca13f673d3622ae479b7bd2f3b857a2a4ac055adbe7502ee4618523c0d6f674f855fe29635843_0",
+          "is_ignored": false,
+          "lines": "        line = \"['10.1.2507.13', { key: '10.1.2507.13', codename: 'Rolo'}],\"",
+          "message": "A gitleaks generic-api-key was detected which attempts to identify hard-coded credentials.  It is not recommended to store credentials in source-code, as this risks secrets being leaked  and used by either an internal or external malicious adversary. It is recommended to use  environment variables to securely provide credentials or retrieve credentials from a  secure vault or HSM (Hardware Security Module). This rule can introduce a lot of false positives,  it is not recommended to be used in PR comments.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-798: Use of Hard-coded Credentials"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+            ],
+            "source-rule-url": "https://github.com/zricethezav/gitleaks/tree/master/cmd/generate/config/rules",
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "gitleaks"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_co2_stacks.py",
+        "start": {
+          "col": 42,
+          "line": 15,
+          "offset": 384
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.generic.secrets.gitleaks.generic-api-key",
+        "end": {
+          "col": 38,
+          "line": 35,
+          "offset": 1105
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "644050a606dc4fa176101104dc8a293b7e9a9c32effbda02bcdca13f673d3622ae479b7bd2f3b857a2a4ac055adbe7502ee4618523c0d6f674f855fe29635843_1",
+          "is_ignored": false,
+          "lines": "['10.1.2507.13', { key: '10.1.2507.13', codename: 'Rolo'}],",
+          "message": "A gitleaks generic-api-key was detected which attempts to identify hard-coded credentials.  It is not recommended to store credentials in source-code, as this risks secrets being leaked  and used by either an internal or external malicious adversary. It is recommended to use  environment variables to securely provide credentials or retrieve credentials from a  secure vault or HSM (Hardware Security Module). This rule can introduce a lot of false positives,  it is not recommended to be used in PR comments.",
+          "metadata": {
+            "category": "security",
+            "confidence": "LOW",
+            "cwe": [
+              "CWE-798: Use of Hard-coded Credentials"
+            ],
+            "cwe2021-top25": true,
+            "cwe2022-top25": true,
+            "impact": "MEDIUM",
+            "likelihood": "LOW",
+            "owasp": [
+              "A07:2021 - Identification and Authentication Failures"
+            ],
+            "references": [
+              "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+            ],
+            "source-rule-url": "https://github.com/zricethezav/gitleaks/tree/master/cmd/generate/config/rules",
+            "subcategory": [
+              "vuln"
+            ],
+            "technology": [
+              "gitleaks"
+            ]
+          },
+          "severity": "INFO",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_co2_stacks.py",
+        "start": {
+          "col": 26,
+          "line": 35,
+          "offset": 1093
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 14,
+          "offset": 444
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "656ad3acd6fb7cd1471b077da105fea0f4ecd3dfd04e0e743791bb7e0d8d857a6b624267f7ec208db20999ef33b3000815674da0043d592c0b3b8ce0487b84e5_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_cts_inventory_mr_notifications.py",
+        "start": {
+          "col": 6,
+          "line": 14,
+          "offset": 424
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 14,
+          "offset": 421
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "a52917e2ea03b4f5f7ab58918cbb6372c0df977323683aa2306f535bef297f36c26b70d7beb8d67d51e143a2b73310e85cd79f847af2ae8c291ed706a4a59cca_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_cts_onboarded_assignee_check.py",
+        "start": {
+          "col": 6,
+          "line": 14,
+          "offset": 401
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 12,
+          "offset": 338
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "b379843585f2d90215bdbce0cddf31e957deab1e03c99966ec2ac099d4f01c3e025917a94e51c4a9c3c8b0318625413bccf370ab9b442b0c38d93c6797608c0d_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_gitlab_connector.py",
+        "start": {
+          "col": 6,
+          "line": 12,
+          "offset": 318
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 10,
+          "offset": 212
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "64e4996f4e951281cf12437e1bc24e3e8515f1bf22b5b9ee839c9651f92bf8a5014fd108b4c09a01b112e2aee71919ed6a85fc6dd686baa884a959808a5b4003_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_jira_connector.py",
+        "start": {
+          "col": 6,
+          "line": 10,
+          "offset": 192
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 15,
+          "offset": 269
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "5412489d3223bacae6de4af1732e32cc84f74429d1c923c5426af37cabfd00d35fe83d7b9722155416599bff7123899ac267272a273038ff8d820f1acc8e5294_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_messages.py",
+        "start": {
+          "col": 6,
+          "line": 15,
+          "offset": 249
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 12,
+          "offset": 233
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "6c4110d29067bac7fcafe976dc53bf75b9fb48edade19703e96a68969cdbc05d0cf7486efacccae7476b33b35f9162b121658197ba4ae217eaf09da22be49b84_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_misc.py",
+        "start": {
+          "col": 6,
+          "line": 12,
+          "offset": 213
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 11,
+          "offset": 292
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "6d64900a3d583a0e92e0f4224e3ed5270a869ca82fb7047db8a9798cdd120a62eaff390c81411fae5162abf811db2c228314095a7d3d7fc0e95434fbc4ad52c1_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_on_call_engineers_notification.py",
+        "start": {
+          "col": 6,
+          "line": 11,
+          "offset": 272
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 11,
+          "offset": 266
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "db0e751d2eca2ad0ad4596573fcb120996b8532d0a3ed6be8a6120f403519487a80bf3609fe085a88bb504222ae51704bcad10d6cf112a59fffda1cf16e7d605_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_pentest_report.py",
+        "start": {
+          "col": 6,
+          "line": 11,
+          "offset": 246
+        }
+      },
+      {
+        "check_id": "assets.opengrep-rules.python.lang.best-practice.unspecified-open-encoding",
+        "end": {
+          "col": 26,
+          "line": 10,
+          "offset": 251
+        },
+        "extra": {
+          "engine_kind": "OSS",
+          "fingerprint": "7060fadbda22f14f27fcc9c07287f42f494b2fc88562ac0c99ac78e53d52da15aafe1de61fd58c81ddd9ad565d821a79fa1784dbef17a9da0b10479bcf14b856_0",
+          "is_ignored": false,
+          "lines": "with open(json_path, \"r\") as f:",
+          "message": "Missing 'encoding' parameter. 'open()' uses device locale encodings by default, corrupting files with special characters. Specify the encoding to ensure cross-platform support when opening files in text mode (e.g. encoding=\"utf-8\").",
+          "metadata": {
+            "category": "best-practice",
+            "references": [
+              "https://www.python.org/dev/peps/pep-0597/",
+              "https://docs.python.org/3/library/functions.html#open"
+            ],
+            "technology": [
+              "python"
+            ]
+          },
+          "severity": "WARNING",
+          "validation_state": "NO_VALIDATOR"
+        },
+        "path": "/tmp/securelens-benderbot-309527264/test/unit_tests/test_security_champion_report.py",
+        "start": {
+          "col": 6,
+          "line": 10,
+          "offset": 231
+        }
+      }
+    ],
+    "findings_count": 118,
+    "status": "COMPLETE",
+    "version": "1.6.0"
+  }
+}

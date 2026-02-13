@@ -1,0 +1,16 @@
+{
+  "scanner": "trufflehog",
+  "status": "COMPLETE",
+  "start_time": "2026-02-13T09:16:34.608244-03:00",
+  "end_time": "2026-02-13T09:16:35.057798-03:00",
+  "duration": "449.555625ms",
+  "results": {
+    "findings": [],
+    "findings_count": 0,
+    "scan_duration": "",
+    "status": "COMPLETE",
+    "unverified_secrets": 0,
+    "verified_secrets": 0,
+    "version": ""
+  }
+}
