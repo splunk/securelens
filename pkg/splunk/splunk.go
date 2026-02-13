@@ -28,7 +28,7 @@ func NewClient(cfg Config) *Client {
 }
 
 func (c *Client) SendEvent(event interface{}) error {
-	if err := validateConfig(c.config); err != nil {
+	if err := ValidateConfig(c.config); err != nil {
 		return err
 	}
 
@@ -81,7 +81,7 @@ func (c *Client) SendEvent(event interface{}) error {
 	return nil
 }
 
-func validateConfig(cfg Config) error {
+func ValidateConfig(cfg Config) error {
 	if cfg.HECEndpoint == "" {
 		return fmt.Errorf("splunk HEC endpoint is required")
 	}

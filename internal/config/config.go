@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"net/url"
+	"os"
+	"reflect"
 	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/splunk/securelens/pkg/splunk"
 )
 
 // Config represents the application configuration
@@ -160,6 +162,8 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	expandEnvVars(&cfg)
+
 	applyDefaults(&cfg)
 	setDefaultURLs(&cfg)
 
@@ -248,18 +252,11 @@ func validateSplunkConfig(cfg SplunkConfig) error {
 	if !cfg.Enabled {
 		return nil
 	}
-	if cfg.HECEndpoint == "" {
-		return fmt.Errorf("splunk.hec_endpoint is required when splunk.enabled is true")
-	}
-	if cfg.HECToken == "" {
-		return fmt.Errorf("splunk.hec_token is required when splunk.enabled is true")
-	}
-	parsed, err := url.Parse(cfg.HECEndpoint)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return fmt.Errorf("splunk.hec_endpoint must be a valid URL")
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("splunk.hec_endpoint must use http or https")
+	if err := splunk.ValidateConfig(splunk.Config{
+		HECEndpoint: cfg.HECEndpoint,
+		Token:       cfg.HECToken,
+	}); err != nil {
+		return fmt.Errorf("splunk config invalid: %w", err)
 	}
 	return nil
 }
@@ -345,6 +342,35 @@ func setDefaultURLs(cfg *Config) {
 	for i := range cfg.Git.Bitbucket {
 		if cfg.Git.Bitbucket[i].APIURL == "" {
 			cfg.Git.Bitbucket[i].APIURL = "https://api.bitbucket.org/2.0"
+		}
+	}
+}
+
+func expandEnvVars(cfg *Config) {
+	expandEnvValue(reflect.ValueOf(cfg).Elem())
+}
+
+func expandEnvValue(value reflect.Value) {
+	if !value.IsValid() {
+		return
+	}
+
+	switch value.Kind() {
+	case reflect.Pointer:
+		if !value.IsNil() {
+			expandEnvValue(value.Elem())
+		}
+	case reflect.Struct:
+		for i := 0; i < value.NumField(); i++ {
+			expandEnvValue(value.Field(i))
+		}
+	case reflect.Slice:
+		for i := 0; i < value.Len(); i++ {
+			expandEnvValue(value.Index(i))
+		}
+	case reflect.String:
+		if value.CanSet() {
+			value.SetString(os.ExpandEnv(value.String()))
 		}
 	}
 }

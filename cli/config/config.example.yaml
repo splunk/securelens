@@ -38,4 +38,4 @@ git:
 splunk:
   enabled: false
   hec_endpoint: "https://splunk.example.com:8088/services/collector"
-  hec_token: "your-hec-token"
+  hec_token: ${SPLUNK_HEC_TOKEN}
