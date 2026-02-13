@@ -1,9 +1,7 @@
 package scan
 
 import (
-	"fmt"
 	"log/slog"
-	"net/url"
 	"strings"
 
 	"github.com/splunk/securelens/internal/config"
@@ -24,7 +22,7 @@ func sendStandaloneResultsToSplunk(cfg *config.Config, standaloneResults map[str
 
 	splunkClient, err := newSplunkClient(cfg)
 	if err != nil {
-		slog.Warn("Splunk client not initialized - check configuration", "error", err)
+		slog.Warn("Splunk client not initialized - check configuration", "error", redactSplunkError(err, cfg.Splunk.HECToken))
 		return
 	}
 
@@ -48,24 +46,14 @@ func shouldSendToSplunk(cfg *config.Config, standaloneResults map[string]*standa
 }
 
 func newSplunkClient(cfg *config.Config) (*splunk.Client, error) {
-	if cfg.Splunk.HECEndpoint == "" {
-		return nil, fmt.Errorf("splunk.hec_endpoint is required")
-	}
-	if cfg.Splunk.HECToken == "" {
-		return nil, fmt.Errorf("splunk.hec_token is required")
-	}
-	parsed, err := url.Parse(cfg.Splunk.HECEndpoint)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, fmt.Errorf("splunk.hec_endpoint must be a valid URL")
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, fmt.Errorf("splunk.hec_endpoint must use http or https")
-	}
-
-	return splunk.NewClient(splunk.Config{
+	splunkCfg := splunk.Config{
 		HECEndpoint: cfg.Splunk.HECEndpoint,
 		Token:       cfg.Splunk.HECToken,
-	}), nil
+	}
+	if err := splunk.ValidateConfig(splunkCfg); err != nil {
+		return nil, err
+	}
+	return splunk.NewClient(splunkCfg), nil
 }
 
 func collectScannerNames(standaloneResults map[string]*standalone.StandaloneScanResult) []string {
@@ -194,6 +182,7 @@ func splitTrivyResult(result *standalone.StandaloneScanResult) []*standalone.Sta
 			event := cloneStandaloneResult(result)
 			results := cloneMap(event.Results)
 
+			// Shallow copy is sufficient since we replace Vulnerabilities entirely.
 			entryCopy := cloneMap(entryMap)
 			entryCopy["Vulnerabilities"] = []interface{}{vuln}
 			results["results"] = []interface{}{entryCopy}
@@ -229,6 +218,7 @@ func cloneStandaloneResult(result *standalone.StandaloneScanResult) *standalone.
 }
 
 func cloneMap(src map[string]interface{}) map[string]interface{} {
+	// Shallow copy only; nested maps/slices share references with the original.
 	if src == nil {
 		return map[string]interface{}{}
 	}
@@ -277,4 +267,15 @@ func extractTrivySeverity(vuln interface{}) string {
 		return ""
 	}
 	return severity
+}
+
+func redactSplunkError(err error, token string) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	if token == "" {
+		return message
+	}
+	return strings.ReplaceAll(message, token, "[redacted]")
 }
