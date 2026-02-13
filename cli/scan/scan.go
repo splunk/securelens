@@ -1277,7 +1277,11 @@ func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *re
 		}
 	}
 
-	sendStandaloneResultsToSplunk(cfg, standaloneResults)
+	sendStandaloneResultsToSplunk(cfg, standaloneResults, splunkRepoContext{
+		Repository: repoURL,
+		Branch:     branch,
+		Commit:     commit,
+	})
 
 	// Write debug output if enabled
 	if opts.Debug {
@@ -1416,7 +1420,11 @@ func executeStandaloneScanWithProgress(ctx context.Context, cfg *config.Config, 
 		}
 	}
 
-	sendStandaloneResultsToSplunk(cfg, standaloneResults)
+	sendStandaloneResultsToSplunk(cfg, standaloneResults, splunkRepoContext{
+		Repository: repoURL,
+		Branch:     branch,
+		Commit:     commit,
+	})
 
 	// Write debug output if enabled
 	if opts.Debug {

@@ -270,7 +270,7 @@ docker pull splunk/splunk:latest
 On macOS (Apple Silicon), use the Linux AMD64 image:
 
 ```bash
-docker pull splunk/splunk:latest --platform linux/amd64
+docker pull --platform linux/amd64 splunk/splunk:latest
 ```
 
 Start Splunk Enterprise:
@@ -337,12 +337,12 @@ index=main sourcetype=_json scanner=opengrep
 | spath input=finding path=start.line output=line
 | spath input=finding path=extra.severity output=severity
 | spath input=finding path=extra.message output=message
-| table _time scanner severity rule_id file line message
+| table _time repository scanner severity rule_id file line message
 | appendpipe [
   stats count
   | where count=0
-  | eval _time=now(), scanner="opengrep", severity="-", rule_id="No findings", file="-", line="-", message="-"
-  | table _time scanner severity rule_id file line message
+  | eval _time=now(), repository="-", scanner="opengrep", severity="-", rule_id="No findings", file="-", line="-", message="-"
+  | table _time repository scanner severity rule_id file line message
 ]
 ```
 
@@ -360,12 +360,12 @@ index=main sourcetype=_json scanner=trivy
 | spath input=vuln path=FixedVersion output=fixed
 | spath input=vuln path=Severity output=severity
 | spath input=vuln path=Title output=title
-| table _time scanner severity cve package installed fixed target title
+| table _time repository scanner severity cve package installed fixed target title
 | appendpipe [
   stats count
   | where count=0
-  | eval _time=now(), scanner="trivy", severity="-", cve="No findings", package="-", installed="-", fixed="-", target="-", title="-"
-  | table _time scanner severity cve package installed fixed target title
+  | eval _time=now(), repository="-", scanner="trivy", severity="-", cve="No findings", package="-", installed="-", fixed="-", target="-", title="-"
+  | table _time repository scanner severity cve package installed fixed target title
 ]
 ```
 
@@ -384,12 +384,12 @@ index=main sourcetype=_json scanner=trufflehog
 | spath input=finding path=SourceMetadata.Data.Filesystem.line output=line_fs
 | eval file=coalesce(file_git, file_fs), line=coalesce(line_git, line_fs)
 | where detector!=""
-| table _time scanner verified detector file line redacted
+| table _time repository scanner verified detector file line redacted
 | appendpipe [
   stats count
   | where count=0
-  | eval _time=now(), scanner="trufflehog", verified="-", detector="No findings", file="-", line="-", redacted="-"
-  | table _time scanner verified detector file line redacted
+  | eval _time=now(), repository="-", scanner="trufflehog", verified="-", detector="No findings", file="-", line="-", redacted="-"
+  | table _time repository scanner verified detector file line redacted
 ]
 ```
 
