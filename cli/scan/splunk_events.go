@@ -10,7 +10,13 @@ import (
 	"github.com/splunk/securelens/pkg/splunk"
 )
 
-func sendStandaloneResultsToSplunk(cfg *config.Config, standaloneResults map[string]*standalone.StandaloneScanResult) {
+type splunkRepoContext struct {
+	Repository string
+	Branch     string
+	Commit     string
+}
+
+func sendStandaloneResultsToSplunk(cfg *config.Config, standaloneResults map[string]*standalone.StandaloneScanResult, repoCtx splunkRepoContext) {
 	if !shouldSendToSplunk(cfg, standaloneResults) {
 		return
 	}
@@ -25,7 +31,7 @@ func sendStandaloneResultsToSplunk(cfg *config.Config, standaloneResults map[str
 	slog.Info("Sending standalone results to Splunk", "count", len(scannerNames), "scanners", strings.Join(scannerNames, ","))
 
 	for scannerName, result := range standaloneResults {
-		sendScannerEventsToSplunk(splunkClient, scannerName, result)
+		sendScannerEventsToSplunk(splunkClient, scannerName, result, repoCtx)
 	}
 }
 
@@ -55,7 +61,7 @@ func collectScannerNames(standaloneResults map[string]*standalone.StandaloneScan
 	return scannerNames
 }
 
-func sendScannerEventsToSplunk(splunkClient *splunk.Client, scannerName string, result *standalone.StandaloneScanResult) {
+func sendScannerEventsToSplunk(splunkClient *splunk.Client, scannerName string, result *standalone.StandaloneScanResult, repoCtx splunkRepoContext) {
 	if result == nil {
 		slog.Warn("Skipping nil standalone result", "scanner", scannerName)
 		return
@@ -65,7 +71,7 @@ func sendScannerEventsToSplunk(splunkClient *splunk.Client, scannerName string, 
 	slog.Info("Prepared standalone events for Splunk", "scanner", scannerName, "count", len(events))
 
 	for _, event := range events {
-		if err := sendStandaloneEvent(splunkClient, scannerName, event); err != nil {
+		if err := sendStandaloneEvent(splunkClient, scannerName, event, repoCtx); err != nil {
 			continue
 		}
 	}
@@ -73,8 +79,8 @@ func sendScannerEventsToSplunk(splunkClient *splunk.Client, scannerName string, 
 	slog.Info("Sent standalone events to Splunk", "scanner", scannerName, "count", len(events))
 }
 
-func sendStandaloneEvent(splunkClient *splunk.Client, scannerName string, event *standalone.StandaloneScanResult) error {
-	rawData, err := json.Marshal(event)
+func sendStandaloneEvent(splunkClient *splunk.Client, scannerName string, event *standalone.StandaloneScanResult, repoCtx splunkRepoContext) error {
+	rawData, err := json.Marshal(buildSplunkEventPayload(event, repoCtx))
 	if err != nil {
 		slog.Error("Failed to marshal standalone event for Splunk", "scanner", scannerName, "error", err)
 		return err
@@ -84,6 +90,24 @@ func sendStandaloneEvent(splunkClient *splunk.Client, scannerName string, event 
 		return err
 	}
 	return nil
+}
+
+func buildSplunkEventPayload(event *standalone.StandaloneScanResult, repoCtx splunkRepoContext) map[string]interface{} {
+	payload := map[string]interface{}{
+		"scanner":    event.Scanner,
+		"status":     event.Status,
+		"start_time": event.StartTime,
+		"end_time":   event.EndTime,
+		"duration":   event.Duration,
+		"results":    event.Results,
+		"repository": repoCtx.Repository,
+		"branch":     repoCtx.Branch,
+		"commit":     repoCtx.Commit,
+	}
+	if event.Error != "" {
+		payload["error"] = event.Error
+	}
+	return payload
 }
 
 func buildStandaloneResultEvents(scannerName string, result *standalone.StandaloneScanResult) []*standalone.StandaloneScanResult {
