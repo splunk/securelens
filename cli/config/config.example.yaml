@@ -36,6 +36,6 @@ git:
     #   api_url: https://bitbucket.company.com
 
 splunk:
-  enabled: true
+  enabled: false
   hec_endpoint: "https://splunk.example.com:8088/services/collector"
   hec_token: "your-hec-token"
