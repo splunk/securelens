@@ -295,7 +295,7 @@ docker run -d --name splunk --platform linux/amd64 \
   splunk/splunk:latest start
 ```
 
-Open the UI at http://localhost:8000 and sign in as `admin` with the password you set.
+Wait a couple of minutes, then open the UI at http://localhost:8000 and sign in as `admin` with the password you set on the command above.
 
 Optional: switch to the free license (after the trial ends, this happens automatically). Go to Settings -> Licensing -> Change License Group -> Free License.
 
