@@ -307,12 +307,12 @@ Optional: switch to the free license (after the trial ends, this happens automat
 
 ### Configure SecureLens
 
-Add this to your config file (for local Splunk):
+Add this to your config file:
 
 ```yaml
 splunk:
   enabled: true
-  hec_endpoint: "http://localhost:8088/services/collector"
+  hec_endpoint: "https://splunk.example.com:8088/services/collector"
   hec_token: "your-hec-token"
 ```
 
