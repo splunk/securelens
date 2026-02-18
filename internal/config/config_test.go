@@ -194,3 +194,81 @@ func TestApplyDefaults(t *testing.T) {
 	assert.Equal(t, 100, cfg.Discovery.MaxReposPerScan)
 	assert.Equal(t, "table", cfg.Discovery.OutputFormat)
 }
+
+func TestValidateSplunkConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		cfg       SplunkConfig
+		wantError bool
+		contains  string
+	}{
+		{
+			name: "disabled with empty fields",
+			cfg: SplunkConfig{
+				Enabled: false,
+			},
+			wantError: false,
+		},
+		{
+			name: "enabled missing endpoint",
+			cfg: SplunkConfig{
+				Enabled:  true,
+				HECToken: "token",
+			},
+			wantError: true,
+			contains:  "HEC endpoint",
+		},
+		{
+			name: "enabled missing token",
+			cfg: SplunkConfig{
+				Enabled:     true,
+				HECEndpoint: "https://splunk.example.com:8088/services/collector",
+			},
+			wantError: true,
+			contains:  "HEC token",
+		},
+		{
+			name: "enabled invalid URL",
+			cfg: SplunkConfig{
+				Enabled:     true,
+				HECEndpoint: "://bad-url",
+				HECToken:    "token",
+			},
+			wantError: true,
+			contains:  "valid URL",
+		},
+		{
+			name: "enabled non-http scheme",
+			cfg: SplunkConfig{
+				Enabled:     true,
+				HECEndpoint: "ftp://splunk.example.com:8088/services/collector",
+				HECToken:    "token",
+			},
+			wantError: true,
+			contains:  "http or https",
+		},
+		{
+			name: "enabled valid config",
+			cfg: SplunkConfig{
+				Enabled:     true,
+				HECEndpoint: "https://splunk.example.com:8088/services/collector",
+				HECToken:    "token",
+			},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSplunkConfig(tt.cfg)
+			if tt.wantError {
+				require.Error(t, err)
+				if tt.contains != "" {
+					assert.Contains(t, err.Error(), tt.contains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}

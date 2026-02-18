@@ -3,9 +3,12 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"reflect"
 	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/splunk/securelens/pkg/splunk"
 )
 
 // Config represents the application configuration
@@ -17,6 +20,7 @@ type Config struct {
 	Scanning  ScanningConfig  `yaml:"scanning"`
 	Output    OutputConfig    `yaml:"output"`
 	Discovery DiscoveryConfig `yaml:"discovery"`
+	Splunk    SplunkConfig    `yaml:"splunk"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -120,6 +124,12 @@ type DiscoveryConfig struct {
 	OutputFormat    string   `yaml:"output_format"`
 }
 
+type SplunkConfig struct {
+	Enabled     bool   `yaml:"enabled" mapstructure:"enabled"`
+	HECEndpoint string `yaml:"hec_endpoint" mapstructure:"hec_endpoint"`
+	HECToken    string `yaml:"hec_token" mapstructure:"hec_token"`
+}
+
 // Load loads configuration from file and environment variables
 func Load(configPath string) (*Config, error) {
 	slog.Info("Loading configuration", "path", configPath)
@@ -152,6 +162,8 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	expandEnvVars(&cfg)
+
 	applyDefaults(&cfg)
 	setDefaultURLs(&cfg)
 
@@ -179,6 +191,9 @@ func (c *Config) Validate() error {
 	}
 
 	if err := validateOutputFormats(c.Output.Format, c.Discovery.OutputFormat); err != nil {
+		return err
+	}
+	if err := validateSplunkConfig(c.Splunk); err != nil {
 		return err
 	}
 
@@ -229,6 +244,20 @@ func validateOutputFormats(outputFormat, discoveryFormat string) error {
 		return fmt.Errorf("invalid discovery output format '%s', must be one of: table, json, yaml", discoveryFormat)
 	}
 
+	return nil
+}
+
+// validateSplunkConfig validates Splunk configuration when enabled
+func validateSplunkConfig(cfg SplunkConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if err := splunk.ValidateConfig(splunk.Config{
+		HECEndpoint: cfg.HECEndpoint,
+		Token:       cfg.HECToken,
+	}); err != nil {
+		return fmt.Errorf("splunk config invalid: %w", err)
+	}
 	return nil
 }
 
@@ -313,6 +342,35 @@ func setDefaultURLs(cfg *Config) {
 	for i := range cfg.Git.Bitbucket {
 		if cfg.Git.Bitbucket[i].APIURL == "" {
 			cfg.Git.Bitbucket[i].APIURL = "https://api.bitbucket.org/2.0"
+		}
+	}
+}
+
+func expandEnvVars(cfg *Config) {
+	expandEnvValue(reflect.ValueOf(cfg).Elem())
+}
+
+func expandEnvValue(value reflect.Value) {
+	if !value.IsValid() {
+		return
+	}
+
+	switch value.Kind() {
+	case reflect.Pointer:
+		if !value.IsNil() {
+			expandEnvValue(value.Elem())
+		}
+	case reflect.Struct:
+		for i := 0; i < value.NumField(); i++ {
+			expandEnvValue(value.Field(i))
+		}
+	case reflect.Slice:
+		for i := 0; i < value.Len(); i++ {
+			expandEnvValue(value.Index(i))
+		}
+	case reflect.String:
+		if value.CanSet() {
+			value.SetString(os.ExpandEnv(value.String()))
 		}
 	}
 }

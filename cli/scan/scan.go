@@ -1277,6 +1277,12 @@ func executeStandaloneScan(ctx context.Context, cfg *config.Config, repoInfo *re
 		}
 	}
 
+	sendStandaloneResultsToSplunk(cfg, standaloneResults, splunkRepoContext{
+		Repository: repoURL,
+		Branch:     branch,
+		Commit:     commit,
+	})
+
 	// Write debug output if enabled
 	if opts.Debug {
 		if err := writeDebugOutput(report, standaloneResults, opts); err != nil {
@@ -1413,6 +1419,12 @@ func executeStandaloneScanWithProgress(ctx context.Context, cfg *config.Config, 
 			}
 		}
 	}
+
+	sendStandaloneResultsToSplunk(cfg, standaloneResults, splunkRepoContext{
+		Repository: repoURL,
+		Branch:     branch,
+		Commit:     commit,
+	})
 
 	// Write debug output if enabled
 	if opts.Debug {
@@ -3003,10 +3015,10 @@ func cleanCheckID(checkID string) string {
 func cleanPath(path string) string {
 	// Look for common temp directory patterns and extract the relative path
 	markers := []string{
-		"/securelens-",      // securelens temp dirs
-		"/tmp/",             // general tmp
-		"/var/folders/",     // macOS temp
-		"\\Temp\\",          // Windows temp
+		"/securelens-",  // securelens temp dirs
+		"/tmp/",         // general tmp
+		"/var/folders/", // macOS temp
+		"\\Temp\\",      // Windows temp
 	}
 
 	for _, marker := range markers {
