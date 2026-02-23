@@ -1,9 +1,6 @@
 package slack
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,34 +24,6 @@ func TestSendMessageOK(t *testing.T) {
 	defer server.Close()
 
 	client := newTestSlackClient(server.URL)
-	// Patch the endpoint for testing
-	oldURL := "https://slack.com/api/chat.postMessage"
-	// Use a closure to temporarily override the endpoint
-	clientSendChatMessage := func(payload map[string]interface{}) (string, error) {
-		data, _ := json.Marshal(payload)
-		req, _ := http.NewRequest("POST", server.URL, bytes.NewBuffer(data))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer token")
-		resp, err := client.client.Do(req)
-		if err != nil {
-			return "", err
-		}
-		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		var slackResp struct {
-			OK    bool   `json:"ok"`
-			Error string `json:"error"`
-			TS    string `json:"ts"`
-		}
-		if err := json.Unmarshal(body, &slackResp); err != nil {
-			return "", err
-		}
-		if !slackResp.OK {
-			return "", nil
-		}
-		return slackResp.TS, nil
-	}
-
 	ts, err := client.SendMessage("hi")
 	if err != nil || ts != "12345" {
 		t.Errorf("Expected ok Slack response, got %v, %s", err, ts)
