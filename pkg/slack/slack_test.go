@@ -147,6 +147,10 @@ func TestSendChatMessage429Retry(t *testing.T) {
 		}
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests {
+			time.Sleep(1 * time.Second)
+			continue
+		}
 		var slackResp struct {
 			OK    bool   `json:"ok"`
 			Error string `json:"error"`
@@ -154,10 +158,6 @@ func TestSendChatMessage429Retry(t *testing.T) {
 		}
 		if err := json.Unmarshal(body, &slackResp); err != nil {
 			t.Errorf("json.Unmarshal failed: %v", err)
-		}
-		if resp.StatusCode == http.StatusTooManyRequests {
-			time.Sleep(1 * time.Second)
-			continue
 		}
 		if slackResp.OK {
 			respTS = slackResp.TS
