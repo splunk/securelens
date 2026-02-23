@@ -13,7 +13,9 @@ import (
 func TestSendChatMessageOK(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true,"ts":"12345"}`))
+		if _, err := w.Write([]byte(`{"ok":true,"ts":"12345"}`)); err != nil {
+			t.Errorf("w.Write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -44,7 +46,9 @@ func TestSendChatMessageOK(t *testing.T) {
 			Error string `json:"error"`
 			TS    string `json:"ts"`
 		}
-		json.Unmarshal(body, &slackResp)
+		if err := json.Unmarshal(body, &slackResp); err != nil {
+			t.Errorf("json.Unmarshal failed: %v", err)
+		}
 		if !slackResp.OK {
 			return "", nil
 		}
@@ -59,7 +63,9 @@ func TestSendChatMessageOK(t *testing.T) {
 func TestSendChatMessageErrorResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":false,"error":"invalid_auth"}`))
+		if _, err := w.Write([]byte(`{"ok":false,"error":"invalid_auth"}`)); err != nil {
+			t.Errorf("w.Write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -87,7 +93,9 @@ func TestSendChatMessageErrorResponse(t *testing.T) {
 			Error string `json:"error"`
 			TS    string `json:"ts"`
 		}
-		json.Unmarshal(body, &slackResp)
+		if err := json.Unmarshal(body, &slackResp); err != nil {
+			t.Errorf("json.Unmarshal failed: %v", err)
+		}
 		if !slackResp.OK {
 			return "", nil
 		}
@@ -106,11 +114,15 @@ func TestSendChatMessage429Retry(t *testing.T) {
 		if calls == 1 {
 			w.WriteHeader(http.StatusTooManyRequests)
 			w.Header().Set("Retry-After", "1")
-			w.Write([]byte("rate limit"))
+			if _, err := w.Write([]byte("rate limit")); err != nil {
+				t.Errorf("w.Write failed: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true,"ts":"67890"}`))
+		if _, err := w.Write([]byte(`{"ok":true,"ts":"67890"}`)); err != nil {
+			t.Errorf("w.Write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -140,7 +152,9 @@ func TestSendChatMessage429Retry(t *testing.T) {
 			Error string `json:"error"`
 			TS    string `json:"ts"`
 		}
-		json.Unmarshal(body, &slackResp)
+		if err := json.Unmarshal(body, &slackResp); err != nil {
+			t.Errorf("json.Unmarshal failed: %v", err)
+		}
 		if resp.StatusCode == http.StatusTooManyRequests {
 			time.Sleep(1 * time.Second)
 			continue
