@@ -17,7 +17,7 @@ type slackRepoContext struct {
 }
 
 const slackMessageMaxChars = 40000
-const divisoryLine = "-----------------------------------------------------------------------"
+const dividerLine = "-----------------------------------------------------------------------"
 
 func sendStandaloneResultsToSlack(cfg *config.Config, standaloneResults map[string]*standalone.StandaloneScanResult, repoCtx slackRepoContext) {
 	if !shouldSendToSlack(cfg, standaloneResults) {
@@ -194,7 +194,7 @@ func buildSlackThreadChunks(events []*standalone.StandaloneScanResult, repoCtx s
 
 func buildSlackThreadHeader(repoCtx slackRepoContext, scannerName string) string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("%s\n*SECURELENS SCAN FINDINGS (%s)*\n", divisoryLine, scannerName))
+	builder.WriteString(fmt.Sprintf("%s\n*SECURELENS SCAN FINDINGS (%s)*\n", dividerLine, scannerName))
 	if repoCtx.Repository != "" {
 		builder.WriteString(fmt.Sprintf("*Repository*: %s\n", repoCtx.Repository))
 	}
@@ -222,7 +222,7 @@ func buildSlackThreadEntry(event *standalone.StandaloneScanResult) string {
 	}
 
 	if event.Error != "" {
-		builder.WriteString(fmt.Sprintf("*Error*: %s\n", redactSlackError(fmt.Errorf(event.Error), "token")))
+		builder.WriteString(fmt.Sprintf("*Error*: %s\n", event.Error))
 	}
 
 	return strings.TrimRight(builder.String(), "\n")
@@ -254,6 +254,9 @@ func buildOpengrepFindingDetail(results map[string]interface{}) string {
 
 	checkID := getStringValue(finding, "check_id")
 	path := getStringValue(finding, "path")
+	// Normalize checkID and path for Slack output
+	checkID = cleanCheckID(checkID)
+	path = cleanPath(path)
 	startLine := getNestedInt(finding, "start", "line")
 	message := getNestedString(finding, "extra", "message")
 	severity := strings.ToUpper(getNestedString(finding, "extra", "severity"))
@@ -261,7 +264,7 @@ func buildOpengrepFindingDetail(results map[string]interface{}) string {
 	code = truncateText(code, 200)
 
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("%s\n*Scanner*: Opengrep\n", divisoryLine))
+	builder.WriteString(fmt.Sprintf("%s\n*Scanner*: Opengrep\n", dividerLine))
 	if checkID != "" {
 		builder.WriteString(fmt.Sprintf("*Rule*: %s\n", checkID))
 	}
@@ -316,7 +319,7 @@ func buildTrivyFindingDetail(results map[string]interface{}) string {
 	target := getStringValue(entryMap, "Target")
 
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("%s\n*Scanner*: Trivy\n", divisoryLine))
+	builder.WriteString(fmt.Sprintf("%s\n*Scanner*: Trivy\n", dividerLine))
 	if id != "" {
 		if severity != "" {
 			builder.WriteString(fmt.Sprintf("*Vuln*: %s (%s)\n", id, severity))
@@ -367,7 +370,7 @@ func buildTrufflehogFindingDetail(results map[string]interface{}) string {
 	link := getNestedString(finding, "SourceMetadata", "Data", "Git", "Link")
 
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("%s\n*Scanner*: Trufflehog\n", divisoryLine))
+	builder.WriteString(fmt.Sprintf("%s\n*Scanner*: Trufflehog\n", dividerLine))
 	if detector != "" {
 		builder.WriteString(fmt.Sprintf("*Detector*: %s\n", detector))
 	}

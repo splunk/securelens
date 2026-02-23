@@ -79,26 +79,26 @@ func (c *Client) sendChatMessage(payload map[string]interface{}) (string, error)
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal Slack payload %w", err)
+		return "", fmt.Errorf("failed to marshal Slack payload: %w", err)
 	}
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		req, err := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewBuffer(data))
 		if err != nil {
-			return "", fmt.Errorf("failed to create request %w", err)
+			return "", fmt.Errorf("failed to create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+c.config.Token)
 
 		resp, err := c.client.Do(req)
 		if err != nil {
-			return "", fmt.Errorf("failed to send request %w", err)
+			return "", fmt.Errorf("failed to send request: %w", err)
 		}
 
 		respBody, readErr := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if readErr != nil {
-			return "", fmt.Errorf("failed to read response body %w", readErr)
+			return "", fmt.Errorf("failed to read response body: %w", readErr)
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
@@ -123,7 +123,7 @@ func (c *Client) sendChatMessage(payload map[string]interface{}) (string, error)
 			TS    string `json:"ts"`
 		}
 		if err := json.Unmarshal(respBody, &slackResp); err != nil {
-			return "", fmt.Errorf("failed to parse Slack response %w: %s", err, string(respBody))
+			return "", fmt.Errorf("failed to parse Slack response: %w: %s", err, string(respBody))
 		}
 		if !slackResp.OK {
 			return "", fmt.Errorf("slack api returned error: %s", slackResp.Error)
