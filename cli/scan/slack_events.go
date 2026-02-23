@@ -159,6 +159,26 @@ func buildSlackThreadChunks(events []*standalone.StandaloneScanResult, repoCtx s
 			separator = "\n"
 		}
 
+		// Check if entry+header fits in a single message
+		if baseLen+len(separator)+len(entry) > slackMessageMaxChars {
+			// Truncate entry to fit with header
+			maxEntryLen := slackMessageMaxChars - baseLen - len(separator) - 3
+			truncatedEntry := entry
+			if maxEntryLen > 0 && len(entry) > maxEntryLen {
+				slog.Warn("Slack thread entry plus header exceeds max message size and will be truncated", "scanner", scannerName, "length", len(entry))
+				truncatedEntry = entry[:maxEntryLen] + "..."
+			} else if maxEntryLen <= 0 {
+				slog.Warn("Slack thread entry cannot fit with header, truncating to fit max message size", "scanner", scannerName, "length", len(entry))
+				truncatedEntry = "..."
+			}
+			chunks = append(chunks, header+separator+truncatedEntry)
+			builder.Reset()
+			builder.WriteString(header)
+			currentLen = builder.Len()
+			baseLen = currentLen
+			continue
+		}
+
 		entryLen := len(separator) + len(entry)
 		if currentLen+entryLen > slackMessageMaxChars && currentLen > baseLen {
 			chunks = append(chunks, strings.TrimRight(builder.String(), "\n"))
@@ -168,22 +188,6 @@ func buildSlackThreadChunks(events []*standalone.StandaloneScanResult, repoCtx s
 			baseLen = currentLen
 			separator = "\n"
 			entryLen = len(separator) + len(entry)
-		}
-
-		if currentLen+entryLen > slackMessageMaxChars && currentLen == baseLen {
-			chunks = append(chunks, strings.TrimRight(builder.String(), "\n"))
-			// Truncate the entry and log a warning if it exceeds the Slack limit
-			truncatedEntry := entry
-			if len(entry) > slackMessageMaxChars {
-				slog.Warn("Slack thread entry exceeds max message size and will be truncated", "scanner", scannerName, "length", len(entry))
-				truncatedEntry = entry[:slackMessageMaxChars-3] + "..."
-			}
-			chunks = append(chunks, truncatedEntry)
-			builder.Reset()
-			builder.WriteString(header)
-			currentLen = builder.Len()
-			baseLen = currentLen
-			continue
 		}
 
 		builder.WriteString(separator)
