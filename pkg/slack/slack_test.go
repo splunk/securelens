@@ -112,8 +112,8 @@ func TestSendChatMessage429Retry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		if calls == 1 {
-			w.WriteHeader(http.StatusTooManyRequests)
 			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
 			if _, err := w.Write([]byte("rate limit")); err != nil {
 				t.Errorf("w.Write failed: %v", err)
 			}

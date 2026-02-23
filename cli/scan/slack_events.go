@@ -172,7 +172,13 @@ func buildSlackThreadChunks(events []*standalone.StandaloneScanResult, repoCtx s
 
 		if currentLen+entryLen > slackMessageMaxChars && currentLen == baseLen {
 			chunks = append(chunks, strings.TrimRight(builder.String(), "\n"))
-			chunks = append(chunks, entry)
+			// Truncate the entry and log a warning if it exceeds the Slack limit
+			truncatedEntry := entry
+			if len(entry) > slackMessageMaxChars {
+				slog.Warn("Slack thread entry exceeds max message size and will be truncated", "scanner", scannerName, "length", len(entry))
+				truncatedEntry = entry[:slackMessageMaxChars-3] + "..."
+			}
+			chunks = append(chunks, truncatedEntry)
 			builder.Reset()
 			builder.WriteString(header)
 			currentLen = builder.Len()
