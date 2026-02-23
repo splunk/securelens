@@ -17,14 +17,16 @@ type Config struct {
 }
 
 type Client struct {
-	config Config
-	client *http.Client
+	config  Config
+	client  *http.Client
+	baseURL string // Allows test injection
 }
 
 func NewClient(cfg Config) *Client {
 	return &Client{
-		config: cfg,
-		client: &http.Client{Timeout: 10 * time.Second},
+		config:  cfg,
+		client:  &http.Client{Timeout: 10 * time.Second},
+		baseURL: "https://slack.com/api/chat.postMessage",
 	}
 }
 
@@ -83,7 +85,7 @@ func (c *Client) sendChatMessage(payload map[string]interface{}) (string, error)
 	}
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		req, err := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewBuffer(data))
+		req, err := http.NewRequest("POST", c.baseURL, bytes.NewBuffer(data))
 		if err != nil {
 			return "", fmt.Errorf("failed to create request: %w", err)
 		}

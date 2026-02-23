@@ -9,8 +9,9 @@ import (
 
 func newTestSlackClient(serverURL string) *Client {
 	return &Client{
-		config: Config{Token: "token", Channel: "chan"},
-		client: &http.Client{Timeout: 2 * time.Second},
+		config:  Config{Token: "token", Channel: "chan"},
+		client:  &http.Client{Timeout: 2 * time.Second},
+		baseURL: serverURL,
 	}
 }
 
