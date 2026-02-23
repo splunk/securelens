@@ -36,7 +36,7 @@ func sendStandaloneResultsToSlack(cfg *config.Config, standaloneResults map[stri
 	message := buildSlackSummaryMessage(standaloneResults, repoCtx)
 	threadTS, err := slackClient.SendMessage(message)
 	if err != nil {
-		slog.Error("Failed to send scan summary to Slack", "error", err)
+		slog.Error("Failed to send scan summary to Slack", "error", redactSlackError(err, cfg.Slack.BotToken))
 		return
 	}
 
