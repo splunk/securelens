@@ -272,3 +272,60 @@ func TestValidateSplunkConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSlackConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		cfg       SlackConfig
+		wantError bool
+		contains  string
+	}{
+		{
+			name: "disabled with empty fields",
+			cfg: SlackConfig{
+				Enabled: false,
+			},
+			wantError: false,
+		},
+		{
+			name: "enabled missing bot token",
+			cfg: SlackConfig{
+				Enabled: true,
+			},
+			wantError: true,
+			contains:  "bot token",
+		},
+		{
+			name: "enabled missing channel",
+			cfg: SlackConfig{
+				Enabled:  true,
+				BotToken: "xoxb-test",
+			},
+			wantError: true,
+			contains:  "channel",
+		},
+		{
+			name: "enabled valid config",
+			cfg: SlackConfig{
+				Enabled:  true,
+				BotToken: "xoxb-test",
+				Channel:  "C1234567890",
+			},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSlackConfig(tt.cfg)
+			if tt.wantError {
+				require.Error(t, err)
+				if tt.contains != "" {
+					assert.Contains(t, err.Error(), tt.contains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
