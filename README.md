@@ -393,6 +393,45 @@ index=main sourcetype=_json scanner=trufflehog
 ]
 ```
 
+## Slack Integration
+
+SecureLens can send scan summaries and findings directly to a Slack channel.
+
+### Configuration
+
+Add the following section to your `config.yaml` (either in the current directory or `~/.securelens/config.yaml`):
+
+```yaml
+slack:
+  enabled: true
+  bot_token: "xoxb-your-slack-bot-token"
+  channel: "#your-channel"
+  username: "SecureLensBot"      # Optional: custom bot name
+  icon_emoji: ":lock:"           # Optional: custom emoji
+```
+
+- `bot_token`: Slack Bot User OAuth Token (starts with `xoxb-`).
+- `channel`: Slack channel name (e.g., `#security-alerts`) or channel ID.
+- `username` and `icon_emoji` are optional for customizing the bot's appearance.
+
+### How It Works
+- After each standalone scan, SecureLens posts a summary message to the configured Slack channel.
+- Detailed findings are posted as thread replies to the summary message.
+
+### Example Usage
+
+```bash
+# Run a scan and send results to Slack
+./securelens scan repo https://github.com/org/repo --mode standalone
+```
+
+If Slack is enabled in your config, you will see scan results in your Slack channel.
+
+### Troubleshooting
+- Ensure your bot token has permission to post in the target channel.
+- If you see warnings about Slack client initialization, check your token and channel settings.
+- No messages? Check that `enabled: true` is set and your config file is loaded.
+
 ## Command Reference
 
 ```bash

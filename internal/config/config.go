@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/splunk/securelens/pkg/slack"
 	"github.com/splunk/securelens/pkg/splunk"
 )
 
@@ -21,6 +22,7 @@ type Config struct {
 	Output    OutputConfig    `yaml:"output"`
 	Discovery DiscoveryConfig `yaml:"discovery"`
 	Splunk    SplunkConfig    `yaml:"splunk"`
+	Slack     SlackConfig     `yaml:"slack"`
 }
 
 // DatabaseConfig holds database connection settings
@@ -130,6 +132,14 @@ type SplunkConfig struct {
 	HECToken    string `yaml:"hec_token" mapstructure:"hec_token"`
 }
 
+type SlackConfig struct {
+	Enabled   bool   `yaml:"enabled" mapstructure:"enabled"`
+	BotToken  string `yaml:"bot_token" mapstructure:"bot_token"`
+	Channel   string `yaml:"channel" mapstructure:"channel"`
+	Username  string `yaml:"username" mapstructure:"username"`
+	IconEmoji string `yaml:"icon_emoji" mapstructure:"icon_emoji"`
+}
+
 // Load loads configuration from file and environment variables
 func Load(configPath string) (*Config, error) {
 	slog.Info("Loading configuration", "path", configPath)
@@ -196,6 +206,9 @@ func (c *Config) Validate() error {
 	if err := validateSplunkConfig(c.Splunk); err != nil {
 		return err
 	}
+	if err := validateSlackConfig(c.Slack); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -257,6 +270,22 @@ func validateSplunkConfig(cfg SplunkConfig) error {
 		Token:       cfg.HECToken,
 	}); err != nil {
 		return fmt.Errorf("splunk config invalid: %w", err)
+	}
+	return nil
+}
+
+// validateSlackConfig validates Slack configuration when enabled
+func validateSlackConfig(cfg SlackConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if err := slack.ValidateConfig(slack.Config{
+		Token:     cfg.BotToken,
+		Channel:   cfg.Channel,
+		Username:  cfg.Username,
+		IconEmoji: cfg.IconEmoji,
+	}); err != nil {
+		return fmt.Errorf("slack config invalid: %w", err)
 	}
 	return nil
 }
