@@ -180,7 +180,6 @@ make install_scan_tools_standalone
 # Or install individually
 make install_opengrep
 make install_opengrep_rules
-make install_trivy
 make install_trufflehog
 
 # Check tool status

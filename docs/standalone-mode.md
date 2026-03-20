@@ -31,9 +31,6 @@ make install_opengrep
 # Download opengrep rules (required for scanning)
 make install_opengrep_rules
 
-# Install trivy (SCA/OSS scanner)
-make install_trivy
-
 # Install trufflehog (secrets scanner)
 make install_trufflehog
 ```
@@ -49,7 +46,6 @@ Example output:
 Checking standalone tools...
 
   opengrep:    ✓ installed (opengrep 1.6.0)
-  trivy:       ✓ installed (Version: 0.48.0)
   trufflehog:  ✓ installed (trufflehog 3.63.0)
 
   opengrep-rules: ✓ installed (assets/opengrep-rules)

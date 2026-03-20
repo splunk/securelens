@@ -2,7 +2,7 @@
 # Standalone scanner installation and management
 
 .PHONY: all build install clean test lint fmt vet
-.PHONY: install_scan_tools_standalone install_opengrep install_trivy install_trufflehog install_opengrep_rules
+.PHONY: install_scan_tools_standalone install_opengrep install_trufflehog install_opengrep_rules
 .PHONY: check_tools help ci security-scan security-scan-quick security-results
 
 # Build settings
@@ -16,7 +16,7 @@ ASSETS_DIR ?= $(shell pwd)/assets
 
 # Tool versions
 OPENGREP_VERSION ?= v1.6.0
-TRIVY_VERSION ?= latest
+TRIVY_VERSION ?= 0.35.0
 
 # Detect architecture
 UNAME_M := $(shell uname -m)
@@ -24,23 +24,17 @@ UNAME_S := $(shell uname -s)
 
 ifeq ($(UNAME_M),x86_64)
     OPENGREP_ARCH := x86
-    TRIVY_ARCH := 64bit
 else ifeq ($(UNAME_M),aarch64)
     OPENGREP_ARCH := aarch64
-    TRIVY_ARCH := ARM64
 else ifeq ($(UNAME_M),arm64)
     OPENGREP_ARCH := arm64
-    TRIVY_ARCH := ARM64
 else
     OPENGREP_ARCH := $(UNAME_M)
-    TRIVY_ARCH := 64bit
 endif
 
 ifeq ($(UNAME_S),Darwin)
-    TRIVY_OS := macOS
     OPENGREP_OS := osx
 else
-    TRIVY_OS := Linux
     # For Linux, use manylinux (glibc) - works on Ubuntu, Debian, etc.
     # musllinux only works on Alpine and other musl-based distros
     OPENGREP_OS := manylinux
@@ -102,7 +96,6 @@ security-scan: build
 	@echo ""
 	@# Check if scanner tools are installed
 	@command -v opengrep >/dev/null 2>&1 || { echo "$(RED)Error: opengrep not installed. Run: make install_opengrep$(NC)"; exit 1; }
-	@command -v trivy >/dev/null 2>&1 || { echo "$(RED)Error: trivy not installed. Run: make install_trivy$(NC)"; exit 1; }
 	@command -v trufflehog >/dev/null 2>&1 || { echo "$(RED)Error: trufflehog not installed. Run: make install_trufflehog$(NC)"; exit 1; }
 	@test -d "$(ASSETS_DIR)/opengrep-rules" || { echo "$(RED)Error: opengrep-rules not found. Run: make install_opengrep_rules$(NC)"; exit 1; }
 	@echo "$(GREEN)All scanner tools found$(NC)"
@@ -123,7 +116,6 @@ security-scan: build
 security-scan-quick: build
 	@echo "$(GREEN)Running quick security scan...$(NC)"
 	@command -v opengrep >/dev/null 2>&1 || { echo "$(RED)Error: opengrep not installed$(NC)"; exit 1; }
-	@command -v trivy >/dev/null 2>&1 || { echo "$(RED)Error: trivy not installed$(NC)"; exit 1; }
 	@command -v trufflehog >/dev/null 2>&1 || { echo "$(RED)Error: trufflehog not installed$(NC)"; exit 1; }
 	$(eval REPO_URL := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//' | sed 's/git@github.com:/https:\/\/github.com\//'))
 	./$(BINARY_NAME) scan repo "$(REPO_URL)" --branch main --mode standalone
@@ -134,7 +126,6 @@ BRANCH ?= main
 security-scan-branch: build
 	@echo "$(GREEN)Running security scan on branch: $(BRANCH)...$(NC)"
 	@command -v opengrep >/dev/null 2>&1 || { echo "$(RED)Error: opengrep not installed$(NC)"; exit 1; }
-	@command -v trivy >/dev/null 2>&1 || { echo "$(RED)Error: trivy not installed$(NC)"; exit 1; }
 	@command -v trufflehog >/dev/null 2>&1 || { echo "$(RED)Error: trufflehog not installed$(NC)"; exit 1; }
 	$(eval REPO_URL := $(shell git remote get-url origin 2>/dev/null | sed 's/\.git$$//' | sed 's/git@github.com:/https:\/\/github.com\//'))
 	./$(BINARY_NAME) scan repo "$(REPO_URL)" --branch "$(BRANCH)" --mode standalone --debug
@@ -176,7 +167,6 @@ help:
 	@echo "  make install_scan_tools_standalone - Install all standalone scanning tools"
 	@echo "  make install_opengrep             - Install opengrep (SAST)"
 	@echo "  make install_opengrep_rules       - Download opengrep rules"
-	@echo "  make install_trivy                - Install trivy (OSS/SCA)"
 	@echo "  make install_trufflehog           - Install trufflehog (secrets)"
 	@echo "  make check_tools                  - Check if all tools are installed"
 	@echo ""
@@ -186,7 +176,7 @@ help:
 	@echo "  OPENGREP_VERSION                  - Opengrep version (default: v1.6.0)"
 
 # Install all standalone tools
-install_scan_tools_standalone: install_opengrep install_opengrep_rules install_trivy install_trufflehog
+install_scan_tools_standalone: install_opengrep install_opengrep_rules install_trufflehog
 	@echo "$(GREEN)All standalone scanning tools installed successfully!$(NC)"
 	@echo ""
 	@make check_tools
@@ -212,11 +202,10 @@ install_opengrep_rules:
 		rm -rf opengrep-rules/elixir opengrep-rules/apex opengrep-rules/stats 2>/dev/null || true
 	@echo "$(GREEN)opengrep rules installed to $(ASSETS_DIR)/opengrep-rules$(NC)"
 
-# Install trivy (OSS/SCA vulnerability scanner)
+# Install trivy - DISABLED (trivy must be installed separately)
 install_trivy:
-	@echo "$(GREEN)Installing trivy for $(TRIVY_OS)/$(TRIVY_ARCH)...$(NC)"
-	@curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $(INSTALL_DIR)
-	@echo "$(GREEN)trivy installed to $(INSTALL_DIR)/trivy$(NC)"
+	@echo "$(YELLOW)trivy installation is disabled. Please install trivy $(TRIVY_VERSION) manually.$(NC)"
+	@exit 1
 
 # Install trufflehog (secrets scanner)
 install_trufflehog:
@@ -233,12 +222,6 @@ check_tools:
 		echo "$(GREEN)✓ installed$(NC) ($$(opengrep --version 2>/dev/null | head -1 || echo 'version unknown'))"; \
 	else \
 		echo "$(RED)✗ not found$(NC) (run: make install_opengrep)"; \
-	fi
-	@printf "  trivy:       "
-	@if command -v trivy >/dev/null 2>&1; then \
-		echo "$(GREEN)✓ installed$(NC) ($$(trivy --version 2>/dev/null | head -1 || echo 'version unknown'))"; \
-	else \
-		echo "$(RED)✗ not found$(NC) (run: make install_trivy)"; \
 	fi
 	@printf "  trufflehog:  "
 	@if command -v trufflehog >/dev/null 2>&1; then \

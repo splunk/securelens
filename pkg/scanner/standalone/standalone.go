@@ -103,12 +103,8 @@ Or manually:
 
 func checkTrivy() ToolStatus {
 	status := ToolStatus{
-		Name: "trivy",
-		InstallHint: `Install trivy:
-  make install_trivy
-
-Or manually:
-  curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin`,
+		Name:        "trivy",
+		InstallHint: `trivy installation via make is disabled. Please install trivy manually.`,
 	}
 
 	path, err := exec.LookPath("trivy")

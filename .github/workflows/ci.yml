@@ -132,10 +132,6 @@ jobs:
           echo "Installing OpenGrep..."
           make install_opengrep INSTALL_DIR=$HOME/.local/bin
 
-          # Install Trivy (dependency scanner)
-          echo "Installing Trivy..."
-          make install_trivy INSTALL_DIR=$HOME/.local/bin
-
           # Install Trufflehog (secrets scanner)
           echo "Installing Trufflehog..."
           make install_trufflehog INSTALL_DIR=$HOME/.local/bin
@@ -148,7 +144,6 @@ jobs:
           echo ""
           echo "=== Verifying Installations ==="
           which opengrep && opengrep --version || echo "ERROR: opengrep not found"
-          which trivy && trivy --version || echo "ERROR: trivy not found"
           which trufflehog && trufflehog --version || echo "ERROR: trufflehog not found"
           ls -la assets/opengrep-rules/ | head -5 || echo "ERROR: opengrep-rules not found"
 
