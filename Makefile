@@ -16,7 +16,7 @@ ASSETS_DIR ?= $(shell pwd)/assets
 
 # Tool versions
 OPENGREP_VERSION ?= v1.6.0
-TRIVY_VERSION ?= 0.35.0
+TRIVY_VERSION ?= 0.69.3
 
 # Detect architecture
 UNAME_M := $(shell uname -m)
