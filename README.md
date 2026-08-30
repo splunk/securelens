@@ -2,9 +2,11 @@
 
 A CLI-based vulnerability scanning tool that aggregates results from multiple security scanners (SAST, secrets, and dependency scanning) into unified reports.
 
+SecureLens is part of the wider **Splunk DevSecOps Scan Platform** -- our custom collection of tooling that provides end-to-end enterprise security scanning workflows. Run SecureLens in conjunction with our open source security scanning engine, [**SRS**](https://github.com/splunk/scan-request-service), to fully customize your scan coverage!
+
 ## Features
 
-- **SRS Integration**: Offload scanning to SRS (Scan Request Service) API for managed scanning infrastructure
+- **SRS Integration**: Offload scanning to [SRS (Scan Request Service)](https://github.com/splunk/scan-request-service) API for managed scanning infrastructure
 - **Standalone Mode**: Run scans locally without external API dependencies
 - **Multi-Scanner Support**: Semgrep/OpenGrep (SAST), FOSSA/Trivy (dependencies), and Trufflehog (secrets)
 - **Parallel Execution**: Scanners run concurrently for faster results
@@ -27,7 +29,7 @@ The Makefile target will build the `securelens` binary and initialize the config
 
 #### Option A: Remote Mode (Recommended) - Using SRS API
 
-The recommended approach is to use SRS (Scan Request Service) which handles scanning infrastructure:
+The recommended approach is to use [SRS (Scan Request Service)](https://github.com/splunk/scan-request-service) which handles scanning infrastructure. Ensure that your SRS instance is setup for [scan orchestration](https://github.com/splunk/scan-request-service/blob/main/docs/scan_orchestration.md) and perform the following:
 
 ```bash
 # Set your SRS API endpoint
